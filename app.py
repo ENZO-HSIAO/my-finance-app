@@ -19,7 +19,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 連結 Google Sheets
-url = "你的GoogleSheets網址填在這裡"
+@st.cache_data(ttl=600)
+def load_data(sheets_url):
+    return conn.read(spreadsheet=sheets_url)
+
+# 執行讀取
+try:
+    df = load_data(url)
+except Exception as e:
+st.error("讀取資料失敗，請確認 Sheets 網址是否正確。")
 conn = st.connection("gsheets", type=GSheetsConnection)
 df = conn.read(spreadsheet=url)
 
