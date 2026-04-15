@@ -2,57 +2,49 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import re
-import json # 用於傳遞數據到 JS
+import json
 
 # 1. 頁面基本設定
 st.set_page_config(page_title="My Finance", page_icon="💰", layout="centered")
 
 # --- 核心邏輯：JavaScript 與 Streamlit 溝通 ---
-# 如果 authentication state 不存在，初始化為 False
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
-# 這裡設定你的自訂密碼 (必須是整數)
-CORRECT_PASSCODE = 1234 
+# 設定密碼
+CORRECT_PASSCODE = "1234"
 
-# 定義一個回呼函數來處理密碼成功解鎖
 def unlock_app():
     st.session_state["authenticated"] = True
 
-# 使用一個隱藏的 text_input 來接收 JS 傳來的成功訊號
+# 密碼檢查元件
 if not st.session_state["authenticated"]:
-    # 這個元件平時是隱藏的，JS 成功後會把 CORRECT_PASSCODE 填入
     check_code = st.text_input("code", type="password", key="hidden_core", label_visibility="collapsed")
     if check_code == str(CORRECT_PASSCODE):
         unlock_app()
         st.rerun()
 
-# --- 2. 極致 iPhone 解鎖 UI (HTML/CSS/JS) ---
-# 只有在未認證時才顯示
+# --- 2. 極致 iPhone 解鎖 UI ---
 if not st.session_state["authenticated"]:
-    iphone_ui_html = """
+    # 注意：這裡我把原本的 %s 換成了 {{PASSCODE_PLACEHOLDER}}
+    iphone_ui_template = """
     <style>
-        /* 隱藏 Streamlit 預設元件，做出全螢幕感覺 */
         .stApp { background: none; }
         [data-testid="stHeader"] { display: none; }
         [data-testid="stToolbar"] { display: none; }
-        [data-testid="stVerticalBlock"] > div:first-child { display: none; } /* 隱藏隱藏的 text_input */
+        [data-testid="stVerticalBlock"] > div:first-child { display: none; }
         
         #iphone-lock-screen {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: linear-gradient(135deg, #1d1d1f 0%, #434343 100%); /* iPhone 預設桌布感 */
+            background: linear-gradient(135deg, #1d1d1f 0%, #434343 100%);
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             color: white; z-index: 99999;
         }
 
-        /* 鎖頭圖示 */
         .lock-icon { font-size: 40px; margin-bottom: 20px; }
-
-        /* 「輸入密碼」文字 */
         .prompt-text { font-size: 17px; font-weight: 400; margin-bottom: 30px; letter-spacing: 0.5px; }
 
-        /* 圓圈指標 (Indicator) */
         .indicator-container { display: flex; gap: 15px; margin-bottom: 60px; }
         .dot {
             width: 13px; height: 13px;
@@ -61,38 +53,40 @@ if not st.session_state["authenticated"]:
         }
         .dot.filled { background-color: #f2f2f7; border-color: #f2f2f7; }
 
-        /* 數字鍵盤 (Keypad) */
         .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 25px; }
         .key {
             width: 75px; height: 75px;
-            background-color: rgba(255, 255, 255, 0.1); /* 半透明 */
-            border-radius: 50%; /* 圓形 */
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            cursor: pointer; -webkit-tap-highlight-color: transparent; /* 移除手機點擊陰影 */
+            cursor: pointer; -webkit-tap-highlight-color: transparent;
             transition: background 0.1s;
         }
-        .key:active { background-color: rgba(255, 255, 255, 0.3); } /* 按下時變亮 */
+        .key:active { background-color: rgba(255, 255, 255, 0.3); }
         .key-number { font-size: 30px; font-weight: 400; }
         .key-letters { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.7); }
 
-        /* 底部文字按鈕 */
         .bottom-buttons {
             position: absolute; bottom: 50px; width: 80%;
             display: flex; justify-content: space-between; font-size: 16px;
+        }
+
+        @keyframes shake { 
+            0%, 100% { transform: translateX(0); } 
+            20%, 60% { transform: translateX(-10px); } 
+            40%, 80% { transform: translateX(10px); } 
         }
     </style>
 
     <div id="iphone-lock-screen">
         <div class="lock-icon">🔒</div>
         <div class="prompt-text">輸入密碼</div>
-
         <div class="indicator-container">
             <div class="dot" id="dot-1"></div>
             <div class="dot" id="dot-2"></div>
             <div class="dot" id="dot-3"></div>
             <div class="dot" id="dot-4"></div>
         </div>
-
         <div class="keypad">
             <div class="key" onclick="press('1')"><span class="key-number">1</span><span class="key-letters">&nbsp;</span></div>
             <div class="key" onclick="press('2')"><span class="key-number">2</span><span class="key-letters">ABC</span></div>
@@ -103,10 +97,9 @@ if not st.session_state["authenticated"]:
             <div class="key" onclick="press('7')"><span class="key-number">7</span><span class="key-letters">PQRS</span></div>
             <div class="key" onclick="press('8')"><span class="key-number">8</span><span class="key-letters">TUV</span></div>
             <div class="key" onclick="press('9')"><span class="key-number">9</span><span class="key-letters">WXYZ</span></div>
-            <div style="visibility: hidden;"></div> /* 佔位 */
+            <div style="visibility: hidden;"></div>
             <div class="key" onclick="press('0')"><span class="key-number">0</span><span class="key-letters">&nbsp;</span></div>
         </div>
-
         <div class="bottom-buttons">
             <span>緊急服務</span>
             <span onclick="resetPasscode()">取消</span>
@@ -115,13 +108,12 @@ if not st.session_state["authenticated"]:
 
     <script>
         let currentCode = "";
-        const correctHash = %s; // 從 Python 傳來的密碼
+        const correctHash = "{{PASSCODE_PLACEHOLDER}}"; 
 
         function press(num) {
             if (currentCode.length < 4) {
                 currentCode += num;
                 updateIndicators();
-                
                 if (currentCode.length === 4) {
                     checkPasscode();
                 }
@@ -145,17 +137,14 @@ if not st.session_state["authenticated"]:
         }
 
         function checkPasscode() {
-            if (currentCode === correctHash.toString()) {
-                // 成功！將密碼寫入隱藏的 Streamlit text_input 並觸發 Rerun
+            if (currentCode === correctHash) {
                 const stInput = window.parent.document.querySelector('input[aria-label="code"]');
                 if (stInput) {
                     stInput.value = currentCode;
                     stInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    // 移除 HTML 覆蓋層
                     document.getElementById('iphone-lock-screen').style.display = 'none';
                 }
             } else {
-                // 失敗，抖動 indicators
                 const container = document.querySelector('.indicator-container');
                 container.style.animation = 'shake 0.3s';
                 setTimeout(() => {
@@ -164,17 +153,14 @@ if not st.session_state["authenticated"]:
                 }, 300);
             }
         }
-
-        // 抖動動畫 CSS
-        const style = document.createElement('style');
-        style.innerHTML = '@keyframes shake { 0%%, 100%% { transform: translateX(0); } 20%%, 60%% { transform: translateX(-10px); } 40%%, 80%% { transform: translateX(10px); } }';
-        document.head.appendChild(style);
     </script>
-    """ % CORRECT_PASSCODE
+    """
+    # 使用 replace 避免 % 或 f-string 的轉義問題
+    iphone_ui_html = iphone_ui_template.replace("{{PASSCODE_PLACEHOLDER}}", str(CORRECT_PASSCODE))
     st.components.v1.html(iphone_ui_html, height=1000, scrolling=False)
-    st.stop() # 停止執行後面的資料程式碼
+    st.stop()
 
-# --- 3. 資產頁面 (解鎖後顯示，樣式回歸極簡奢華) ---
+# --- 3. 資產頁面 ---
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] { background-color: #F2F2F7; }
@@ -209,10 +195,7 @@ try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     df = conn.read(spreadsheet=url, ttl=0)
 
-    # 過濾邏輯：排除含有「合計」的列
     items_df = df[df['類別'].notna() & ~df['項目'].str.contains('合計', na=False)].copy()
-    
-    # 計算總額
     total_net = items_df['總價值公式'].apply(parse_val).sum()
 
     st.markdown('<p style="color: #8E8E93; font-size: 14px;">我的淨資產 (台幣)</p>', unsafe_allow_html=True)
@@ -223,30 +206,27 @@ try:
         "投資-加密貨幣": "#4DB6AC", "固定資產": "#81C784", "負債": "#FFB74D"
     }
 
-    # 渲染資產清單 (使用原本你滿意的卡片樣式)
     for _, row in items_df.iterrows():
         if pd.isna(row['項目']): continue
-        
         c = color_map.get(row['類別'], "#D1D1D6")
         amt = parse_val(row['總價值公式'])
         qty = parse_val(row['持有數量'])
         q_txt = "{:,.6f}".format(qty) if 0 < qty < 1 else "{:,.0f}".format(qty)
         note = str(row['備註']) if not pd.isna(row['備註']) else ""
 
-        # 使用原本你滿意的卡片樣式
         card_html = (
-            '<div class="asset-card">'
-            '<div class="color-tag" style="background-color: ' + c + ';"></div>'
-            '<div class="card-content">'
-            '<div>'
-                '<div class="title-text">' + str(row['項目']) + '</div>'
-                '<div class="sub-text">持有：' + q_txt + '<br>' + str(row['類別']) + ' · ' + note + '</div>'
-            '</div>'
-            '<div class="price-text">NT$ ' + "{:,.0f}".format(amt) + '</div>'
-            '</div>'
-            '</div>'
+            f'<div class="asset-card">'
+            f'<div class="color-tag" style="background-color: {c};"></div>'
+            f'<div class="card-content">'
+            f'<div>'
+            f'<div class="title-text">{row["項目"]}</div>'
+            f'<div class="sub-text">持有：{q_txt}<br>{row["類別"]} · {note}</div>'
+            f'</div>'
+            f'<div class="price-text">NT$ {amt:,.0f}</div>'
+            f'</div>'
+            f'</div>'
         )
         st.markdown(card_html, unsafe_allow_html=True)
 
 except Exception as e:
-    st.error("正在同步數據中...")
+    st.error(f"數據讀取失敗，請檢查權限或網址。錯誤細節：{e}")
