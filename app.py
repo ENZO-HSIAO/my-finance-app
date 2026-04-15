@@ -50,13 +50,12 @@ try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     df = conn.read(spreadsheet=url)
     
+    # 總額顯示
     st.markdown('<p style="color: #8E8E93; font-size: 14px; margin-bottom: 8px;">我的淨資產 (台幣)</p>', unsafe_allow_html=True)
     
-    # 【關鍵：處理台幣格式轉數字】
-    # 如果你的表格裡有 NT$, ¥ 或逗號，這行會把它們清掉以便計算總額
+    # 清理總價值欄位以便計算總額
     df['計算用金額'] = df['總價值公式'].astype(str).replace(r'[NT$,¥ ]', '', regex=True)
     df['計算用金額'] = pd.to_numeric(df['計算用金額'], errors='coerce').fillna(0)
-    
     total = df['計算用金額'].sum()
     st.markdown(f'<p class="amount-header">NT$ {total:,.0f}</p>', unsafe_allow_html=True)
 
@@ -65,27 +64,30 @@ try:
         "投資-加密貨幣": "#4DB6AC", "固定資產": "#81C784", "負債": "#FFB74D",
     }
 
+    # 5. 顯示列表
     for index, row in df.iterrows():
         if pd.isna(row['項目']) or row['項目'] == '合計': 
             continue
         
         tag_color = color_map.get(row['類別'], "#D1D1D6")
         
-# 處理持有數量顯示
-qty = row['持有數量']
-try:
-    q_val = float(qty)
-    # 針對小於 1 的加密貨幣顯示 6 位小數，避免看起來像 0
-    qty_display = f"{q_val:.6f}" if 0 < q_val < 1 else f"{q_val:,.0f}"
-except:
-    qty_display = "-"
+        # --- 處理持有數量顯示 (解決 0 的問題) ---
+        qty = row['持有數量']
+        try:
+            q_val = float(qty)
+            # 針對 BTC/ETH 等小量資產顯示 6 位小數，避免變成 0
+            qty_display = f"{q_val:.6f}" if 0 < q_val < 1 else f"{q_val:,.0f}"
+        except:
+            qty_display = "-"
 
-# 處理金額顯示
-try:
-    price_val = float(pd.to_numeric(str(row['總價值公式']).replace('NT$', '').replace(',', ''), errors='coerce'))
-    price_display = f"NT$ {price_val:,.2f}" # 保留兩位小數避免顯示為 0.0
-except:
-    price_display = f"NT$ {row['總價值公式']}"
+        # --- 處理單項金額顯示 ---
+        price_raw = str(row['總價值公式'])
+        try:
+            # 嘗試轉成數字顯示，保留兩位小數避免 BTC 金額看起來像 0
+            p_val = float(pd.to_numeric(price_raw.replace('NT$', '').replace(',', ''), errors='coerce'))
+            price_display = f"NT$ {p_val:,.2f}" if p_val < 100 else f"NT$ {p_val:,.0f}"
+        except:
+            price_display = f"NT$ {price_raw}"
 
         st.markdown(f'''
         <div class="asset-card">
@@ -105,3 +107,4 @@ except:
 
 except Exception as e:
     st.error(f"連線失敗，請檢查設定。")
+    st.info(f"錯誤代碼: {e}")
