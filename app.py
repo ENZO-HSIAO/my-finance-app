@@ -7,7 +7,7 @@ import re
 st.set_page_config(page_title="My Finance", page_icon="💰", layout="centered")
 
 # --- 2. 密碼保護功能 ---
-CORRECT_PASSWORD = "你的自訂密碼" 
+CORRECT_PASSWORD = "900612" 
 
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
