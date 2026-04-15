@@ -23,7 +23,7 @@ if not st.session_state["authenticated"]:
             st.error("密碼錯誤")
     st.stop()
 
-# --- 3. CSS 樣式 (獨立存放，避免程式碼衝突) ---
+# --- 3. CSS 樣式 (純字串，絕對不含變數) ---
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] { background-color: #F2F2F7; }
@@ -44,12 +44,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. 數字解析 ---
+# --- 4. 數字解析工具 ---
 def parse_val(val):
     if pd.isna(val) or val == "": return 0.0
     try:
-        # 強制只抓取數字、小數點
-        return float("".join(re.findall(r"[-+]?\d*\.\d+|\d+", str(val))))
+        res = "".join(re.findall(r"[-+]?\d*\.\d+|\d+", str(val)))
+        return float(res)
     except:
         return 0.0
 
@@ -58,47 +58,47 @@ url = "https://docs.google.com/spreadsheets/d/1f0XezXO1hq7vrLw_w0C7SC5UzM_MF-9KU
 
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # ttl=0 確保不快取，直接抓最新數據
     df = conn.read(spreadsheet=url, ttl=0)
 
-    # 排除含有「合計」的列，避免總金額翻倍
-    items_df = df[~df['項目'].str.contains('合計', na=False)].copy()
+    # A. 核心過濾：只保留有填寫「類別」且「項目」不含「合計」的列
+    items_df = df[df['類別'].notna() & ~df['項目'].str.contains('合計', na=False)].copy()
     
-    # 計算總額
+    # B. 計算總額
     total_net = items_df['總價值公式'].apply(parse_val).sum()
 
     st.markdown('<p style="color: #8E8E93; font-size: 14px;">我的淨資產 (台幣)</p>', unsafe_allow_html=True)
-    st.markdown('<p class="amount-header">NT$ %s</p>' % "{:,.0f}".format(total_net), unsafe_allow_html=True)
+    st.markdown('<p class="amount-header">NT$ {:,.0f}</p>'.format(total_net), unsafe_allow_html=True)
 
     color_map = {
         "流動資產": "#A28BF3", "投資-股票": "#FF8A65", 
         "投資-加密貨幣": "#4DB6AC", "固定資產": "#81C784", "負債": "#FFB74D"
     }
 
-    # 6. 渲染清單 (完全捨棄 f-string，改用 % 格式化以徹底避開語法報錯)
+    # 6. 渲染資產清單 (完全棄用 f-string，改用純拼接以防報錯)
     for _, row in items_df.iterrows():
         if pd.isna(row['項目']): continue
         
         c = color_map.get(row['類別'], "#D1D1D6")
-        v = parse_val(row['總價值公式'])
-        q = parse_val(row['持有數量'])
-        qty_txt = "{:,.6f}".format(q) if 0 < q < 1 else "{:,.0f}".format(q)
+        amt = parse_val(row['總價值公式'])
+        qty = parse_val(row['持有數量'])
+        
+        # 數量顯示格式：小數點後多位的資產保留 6 位，整數則去小數
+        qty_txt = "{:,.6f}".format(qty) if 0 < qty < 1 else "{:,.0f}".format(qty)
         note = str(row['備註']) if not pd.isna(row['備註']) else ""
 
-        card_html = """
-        <div class="asset-card">
-            <div class="color-tag" style="background-color: %s;"></div>
-            <div class="card-content">
-                <div>
-                    <div class="title-text">%s</div>
-                    <div class="sub-text">持有：%s<br>%s · %s</div>
-                </div>
-                <div class="price-text">NT$ %s</div>
-            </div>
-        </div>
-        """ % (c, row['項目'], qty_txt, row['類別'], note, "{:,.0f}".format(v))
-        
+        card_html = (
+            '<div class="asset-card">'
+            '<div class="color-tag" style="background-color: ' + c + ';"></div>'
+            '<div class="card-content">'
+            '<div>'
+                '<div class="title-text">' + str(row['項目']) + '</div>'
+                '<div class="sub-text">持有：' + qty_txt + '<br>' + str(row['類別']) + ' · ' + note + '</div>'
+            '</div>'
+            '<div class="price-text">NT$ ' + "{:,.0f}".format(amt) + '</div>'
+            '</div>'
+            '</div>'
+        )
         st.markdown(card_html, unsafe_allow_html=True)
 
 except Exception as e:
-    st.error("讀取中，請稍候並刷新頁面。")
+    st.error("連線中...")
