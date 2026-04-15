@@ -3,23 +3,28 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import re
 
-# 1. 頁面設定
+# 1. 頁面基本設定
 st.set_page_config(page_title="My Finance", page_icon="💰", layout="centered")
 
-# --- 2. 密碼保護 (請設定你的密碼) ---
+# --- 2. 密碼保護功能 ---
+# 請在這裡設定你的密碼
+CORRECT_PASSWORD = "０" 
+
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
 if not st.session_state["authenticated"]:
     st.markdown("### 🔐 私人資產管理系統")
-    pwd = st.text_input("輸入密碼", type="password")
+    user_input = st.text_input("請輸入訪問密碼", type="password")
     if st.button("登入"):
-        if pwd == "0":
+        if user_input == CORRECT_PASSWORD:
             st.session_state["authenticated"] = True
             st.rerun()
+        else:
+            st.error("密碼錯誤，請重新輸入。")
     st.stop()
 
-# --- 3. CSS 樣式 (回復原本的 Apple 風格) ---
+# --- 3. CSS 樣式 (Apple 風格) ---
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"] { background-color: #F2F2F7; }
@@ -40,59 +45,54 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. 核心解析函數 ---
-def clean_num(val):
-    """強力提取數字，移除所有符號"""
+# --- 4. 數字解析工具 ---
+def parse_val(val):
     if pd.isna(val) or val == "": return 0.0
     try:
-        # 只抓數字和小數點
-        num_str = "".join(re.findall(r"[-+]?\d*\.\d+|\d+", str(val)))
-        return float(num_str)
+        res = "".join(re.findall(r"[-+]?\d*\.\d+|\d+", str(val)))
+        return float(res)
     except:
         return 0.0
 
-# --- 5. 讀取資料 ---
+# --- 5. 讀取與計算 ---
 url = "https://docs.google.com/spreadsheets/d/1f0XezXO1hq7vrLw_w0C7SC5UzM_MF-9KU6fGLJiyGwc/edit?usp=sharing"
 
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(spreadsheet=url, ttl=0) # 強制不快取
+    df = conn.read(spreadsheet=url, ttl=0)
 
-    # 過濾掉「合計」那一列，避免重複計算數字
-    display_df = df[df['項目'].str.contains('合計') == False].copy()
+    # 排除合計列
+    items_df = df[~df['項目'].str.contains('合計', na=False)].copy()
     
-    # 計算總額 (只加 display_df 的數字)
-    total_val = display_df['總價值公式'].apply(clean_num).sum()
+    # 計算台幣總額
+    total_net = items_df['總價值公式'].apply(parse_val).sum()
 
-    # 顯示標題
     st.markdown('<p style="color: #8E8E93; font-size: 14px; margin-bottom: 8px;">我的淨資產 (台幣)</p>', unsafe_allow_html=True)
-    st.markdown(f'<p class="amount-header">NT$ {total_val:,.0f}</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="amount-header">NT$ {total_net:,.0f}</p>', unsafe_allow_html=True)
 
     color_map = {
         "流動資產": "#A28BF3", "投資-股票": "#FF8A65", 
-        "投資-加密貨幣": "#4DB6AC", "固定資產": "#81C784", "負債": "#FFB74D",
+        "投資-加密貨幣": "#4DB6AC", "固定資產": "#81C784", "負債": "#FFB74D"
     }
 
-    # 6. 渲染卡片
-    for _, row in display_df.iterrows():
+    # 6. 渲染資產卡片
+    for _, row in items_df.iterrows():
         if pd.isna(row['項目']): continue
         
-        tag_color = color_map.get(row['類別'], "#D1D1D6")
-        
-        # 處理數量顯示
-        try:
-            q = float(row['持有數量'])
-            qty_text = f"{q:.6f}" if 0 < q < 1 else f"{q:,.0f}"
-        except:
-            qty_text = str(row['持有數量'])
-
-        # 處理金額顯示 (台幣整數)
-        amt = clean_num(row['總價值公式'])
-        
-        # 特別修復：如果是銀行存款且總價為 0，改抓持有數量 (假設 1 點 = 1 元)
-        if "銀行存款" in str(row['項目']) and amt == 0:
-            amt = clean_num(row['持有數量'])
+        c = color_map.get(row['類別'], "#D1D1D6")
+        amt = parse_val(row['總價值公式'])
+        q = parse_val(row['持有數量'])
+        q_txt = f"{q:.6f}" if 0 < q < 1 else f"{q:,.0f}"
 
         st.markdown(f'''
         <div class="asset-card">
-            <div class="color-tag" style="background-color: {tag
+            <div class="color-tag" style="background-color: {c};"></div>
+            <div class="card-content">
+                <div style="flex: 1;">
+                    <div class="title-text">{row['項目']}</div>
+                    <div class="sub-text">持有：{q_txt}<br>{row['類別']} · {row['備註']}</div>
+                </div>
+                <div class="price-text">NT$ {amt:,.0f}</div>
+            </div>
+        </div>
+        ''
