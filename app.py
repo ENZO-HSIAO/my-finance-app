@@ -2,37 +2,38 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import re
-import plotly.express as px
 
 # 1. 頁面基本設定
 st.set_page_config(page_title="My Finance", page_icon="💰", layout="centered")
 
-# --- 2. 密碼解鎖 UI 升級 (方格佈局) ---
-CORRECT_PASSWORD = "1234" 
+# --- 2. 密碼解鎖 UI 優化 (方格按鈕) ---
+CORRECT_PASSWORD = "0612" 
 
 if "auth_code" not in st.session_state:
     st.session_state["auth_code"] = ""
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
-# 注入 CSS 讓按鈕變美觀 (方格化)
+# 注入 CSS：讓按鈕變成漂亮的圓角方塊
 st.markdown("""
 <style>
     div.stButton > button {
-        height: 70px;
+        height: 80px;
         width: 100%;
-        border-radius: 15px;
+        border-radius: 20px;
         background-color: white;
         color: #1C1C1E;
-        font-size: 24px;
+        font-size: 26px;
         font-weight: 600;
         border: 1px solid #E5E5EA;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        margin-bottom: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        margin-bottom: 15px;
     }
     div.stButton > button:active {
         background-color: #F2F2F7;
     }
+    /* 隱藏預設的頂部工具欄讓它更像 App */
+    [data-testid="stHeader"] { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -43,33 +44,30 @@ if not st.session_state["authenticated"]:
     dots = "●" * len(st.session_state["auth_code"]) + "○" * (len(CORRECT_PASSWORD) - len(st.session_state["auth_code"]))
     st.markdown("<h1 style='text-align: center; letter-spacing: 15px; color: #8E8E93;'>" + dots + "</h1>", unsafe_allow_html=True)
 
-    # 模擬 3x4 方格鍵盤
+    # 3x4 方格佈局
     keys = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"], ["清除", "0", "確定"]]
     
-    # 容器置中
-    keypad_container = st.container()
-    with keypad_container:
-        for row in keys:
-            cols = st.columns(3) # 強制切成三等份
-            for i, key in enumerate(row):
-                if cols[i].button(key):
-                    if key == "清除":
-                        st.session_state["auth_code"] = ""
+    for row in keys:
+        cols = st.columns(3)
+        for i, key in enumerate(row):
+            if cols[i].button(key):
+                if key == "清除":
+                    st.session_state["auth_code"] = ""
+                    st.rerun()
+                elif key == "確定":
+                    if st.session_state["auth_code"] == CORRECT_PASSWORD:
+                        st.session_state["authenticated"] = True
                         st.rerun()
-                    elif key == "確定":
-                        if st.session_state["auth_code"] == CORRECT_PASSWORD:
-                            st.session_state["authenticated"] = True
-                            st.rerun()
-                        else:
-                            st.error("密碼錯誤")
-                            st.session_state["auth_code"] = ""
                     else:
-                        if len(st.session_state["auth_code"]) < len(CORRECT_PASSWORD):
-                            st.session_state["auth_code"] += key
-                            st.rerun()
+                        st.error("密碼錯誤")
+                        st.session_state["auth_code"] = ""
+                else:
+                    if len(st.session_state["auth_code"]) < len(CORRECT_PASSWORD):
+                        st.session_state["auth_code"] += key
+                        st.rerun()
     st.stop()
 
-# --- 3. 資產頁面 (維持精美樣式與分頁) ---
+# --- 3. 資產頁面 (解鎖後) ---
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] { background-color: #F2F2F7; }
@@ -98,8 +96,8 @@ try:
     items_df['總價值'] = items_df['總價值公式'].apply(parse_val)
     total_net = items_df['總價值'].sum()
 
-    # --- 分頁功能 ---
-    tab1, tab2 = st.tabs(["📊 我的資產", "📈 佔比分析"])
+    # --- 穩定版分頁 ---
+    tab1, tab2 = st.tabs(["📊 資產清單", "📄 原始數據"])
 
     with tab1:
         st.markdown(f'<p style="color: #8E8E93; font-size: 14px; margin-top: 20px;">我的淨資產 (台幣)</p>', unsafe_allow_html=True)
@@ -120,9 +118,8 @@ try:
             """, unsafe_allow_html=True)
 
     with tab2:
-        fig = px.pie(items_df, values='總價值', names='類別', color='類別', 
-                     color_discrete_map=color_map, hole=0.4)
-        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("### Google Sheets 原始資料")
+        st.dataframe(items_df[['類別', '項目', '持有數量', '總價值']], use_container_width=True)
 
 except:
     st.info("數據讀取中...")
