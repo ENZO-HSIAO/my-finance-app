@@ -6,8 +6,8 @@ import pandas as pd
 st.set_page_config(page_title="My Finance", page_icon="💰", layout="centered")
 
 # --- 2. 密碼保護功能 ---
-# 請在這裡設定你的專屬密碼
-correct_password = "900612" 
+# 請在此修改你的專屬密碼
+correct_password = "你的自訂密碼" 
 
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
@@ -44,29 +44,58 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 4. 連結 Google Sheets
-# 這裡建議保持 url 定義，確保程式邏輯明確
+# --- 4. 讀取資料 ---
 url = r"https://docs.google.com/spreadsheets/d/1f0XezXO1hq7vrLw_w0C7SC5UzM_MF-9KU6fGLJiyGwc/edit?usp=sharing"
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-@st.cache_data(ttl=600)
-def load_data(sheets_url):
-    return conn.read(spreadsheet=sheets_url)
-
-# 顏色對應表 (根據試算表「類別」自動換色)
-color_map = {
-    "流動資產": "#A28BF3", # 紫色
-    "投資-股票": "#FF8A65", # 橘色
-    "投資-加密貨幣": "#4DB6AC", # 青色
-    "固定資產": "#81C784", # 綠色
-    "負債": "#FFB74D",    # 淺橘色
-}
 
 try:
-    # 讀取資料
-    df = load_data(url)
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    df = conn.read(spreadsheet=url)
     
+    # 介面頂部：總資產
     st.markdown('<p style="color: #8E8E93; font-size: 14px; margin-bottom: 8px;">我的淨資產 (元)</p>', unsafe_allow_html=True)
     
     # 計算總金額
-    df
+    df['金額數字'] = pd.to_numeric(df['總價值公式'], errors='coerce').fillna(0)
+    total = df['金額數字'].sum()
+    st.markdown(f'<p class="amount-header">¥ {total:,.2f}</p>', unsafe_allow_html=True)
+
+    # 顏色對應表
+    color_map = {
+        "流動資產": "#A28BF3", # 紫色
+        "投資-股票": "#FF8A65", # 橘色
+        "投資-加密貨幣": "#4DB6AC", # 青色
+        "固定資產": "#81C784", # 綠色
+        "負債": "#FFB74D",    # 淺橘色
+    }
+
+    # 顯示列表
+    for index, row in df.iterrows():
+        # 跳過「合計」行或空行
+        if pd.isna(row['項目']) or row['項目'] == '合計': 
+            continue
+        
+        tag_color = color_map.get(row['類別'], "#D1D1D6")
+        
+        # 格式化持有數量 (處理幾股/幾顆)
+        qty = row['持有數量']
+        qty_display = f"{float(qty):,.4f}" if pd.to_numeric(qty, errors='coerce') > 0 else "-"
+
+        st.markdown(f'''
+        <div class="asset-card">
+            <div class="color-tag" style="background-color: {tag_color};"></div>
+            <div class="card-content">
+                <div style="flex: 1;">
+                    <div class="title-text">{row['項目']}</div>
+                    <div class="sub-text">
+                        持有：<span style="color: #1C1C1E; font-weight: 500;">{qty_display}</span> 
+                        <br>{row['類別']} · {row['備註']}
+                    </div>
+                </div>
+                <div class="price-text">¥ {row['總價值公式']}</div>
+            </div>
+        </div>
+        ''', unsafe_allow_html=True)
+
+except Exception as e:
+    st.error(f"發生錯誤，請確認 Google Sheets 權限與 Secret 設定。")
+    st.info(f"錯誤代碼：{e}")
