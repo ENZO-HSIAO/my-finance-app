@@ -6,7 +6,6 @@ import pandas as pd
 st.set_page_config(page_title="My Finance", page_icon="💰", layout="centered")
 
 # --- 2. 密碼保護功能 ---
-# 請在此修改你的專屬密碼
 correct_password = "900612" 
 
 if "authenticated" not in st.session_state:
@@ -23,7 +22,7 @@ if not st.session_state["authenticated"]:
             st.error("密碼錯誤，請重新輸入。")
     st.stop()
 
-# --- 3. CSS 強制美化 (Apple 彩色標籤版) ---
+# --- 3. CSS 樣式美化 ---
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"] { background-color: #F2F2F7; }
@@ -51,34 +50,39 @@ try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     df = conn.read(spreadsheet=url)
     
-    # 介面頂部：總資產
-    st.markdown('<p style="color: #8E8E93; font-size: 14px; margin-bottom: 8px;">我的淨資產 (元)</p>', unsafe_allow_html=True)
+    st.markdown('<p style="color: #8E8E93; font-size: 14px; margin-bottom: 8px;">我的淨資產 (台幣)</p>', unsafe_allow_html=True)
     
-    # 計算總金額
-    df['金額數字'] = pd.to_numeric(df['總價值公式'], errors='coerce').fillna(0)
-    total = df['金額數字'].sum()
-    st.markdown(f'<p class="amount-header">¥ {total:,.2f}</p>', unsafe_allow_html=True)
+    # 【關鍵：處理台幣格式轉數字】
+    # 如果你的表格裡有 NT$, ¥ 或逗號，這行會把它們清掉以便計算總額
+    df['計算用金額'] = df['總價值公式'].astype(str).replace(r'[NT$,¥ ]', '', regex=True)
+    df['計算用金額'] = pd.to_numeric(df['計算用金額'], errors='coerce').fillna(0)
+    
+    total = df['計算用金額'].sum()
+    st.markdown(f'<p class="amount-header">NT$ {total:,.0f}</p>', unsafe_allow_html=True)
 
-    # 顏色對應表
     color_map = {
-        "流動資產": "#A28BF3", # 紫色
-        "投資-股票": "#FF8A65", # 橘色
-        "投資-加密貨幣": "#4DB6AC", # 青色
-        "固定資產": "#81C784", # 綠色
-        "負債": "#FFB74D",    # 淺橘色
+        "流動資產": "#A28BF3", "投資-股票": "#FF8A65", 
+        "投資-加密貨幣": "#4DB6AC", "固定資產": "#81C784", "負債": "#FFB74D",
     }
 
-    # 顯示列表
     for index, row in df.iterrows():
-        # 跳過「合計」行或空行
         if pd.isna(row['項目']) or row['項目'] == '合計': 
             continue
         
         tag_color = color_map.get(row['類別'], "#D1D1D6")
         
-        # 格式化持有數量 (處理幾股/幾顆)
+        # 數量顯示處理
         qty = row['持有數量']
-        qty_display = f"{float(qty):,.4f}" if pd.to_numeric(qty, errors='coerce') > 0 else "-"
+        try:
+            q_val = float(qty)
+            qty_display = f"{q_val:,.4f}" if q_val < 1 and q_val > 0 else f"{q_val:,.0f}"
+        except:
+            qty_display = str(qty) if not pd.isna(qty) else "-"
+
+        # 金額顯示：直接使用你表單改好的台幣格式
+        price_display = str(row['總價值公式'])
+        if "NT$" not in price_display:
+            price_display = f"NT$ {price_display}"
 
         st.markdown(f'''
         <div class="asset-card">
@@ -91,11 +95,10 @@ try:
                         <br>{row['類別']} · {row['備註']}
                     </div>
                 </div>
-                <div class="price-text">¥ {row['總價值公式']}</div>
+                <div class="price-text">{price_display}</div>
             </div>
         </div>
         ''', unsafe_allow_html=True)
 
 except Exception as e:
-    st.error(f"發生錯誤，請確認 Google Sheets 權限與 Secret 設定。")
-    st.info(f"錯誤代碼：{e}")
+    st.error(f"連線失敗，請檢查設定。")
