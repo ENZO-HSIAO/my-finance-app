@@ -8,7 +8,7 @@ st.set_page_config(page_title="My Finance", page_icon="💰", layout="centered")
 
 # --- 2. iPhone 數字解鎖邏輯 ---
 # 這裡設定你的 4 位數或多位數密碼
-CORRECT_PASSWORD = "1234" 
+CORRECT_PASSWORD = "1234"
 
 if "auth_code" not in st.session_state:
     st.session_state["auth_code"] = ""
