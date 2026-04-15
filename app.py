@@ -23,11 +23,14 @@ st.markdown("""
 def load_data(sheets_url):
     return conn.read(spreadsheet=sheets_url)
 
-# 執行讀取
+# --- 執行讀取 ---
 try:
     df = load_data(url)
 except Exception as e:
-st.error("讀取資料失敗，請確認 Sheets 網址是否正確。")
+    st.error("讀取資料失敗，請確認 Google Sheets 網址是否正確。")
+    st.stop() # 如果讀不到資料就停止執行，避免後面報錯
+
+# 這裡開始是主要的程式邏輯，請確保它們跟 try 平行（不要縮進）
 conn = st.connection("gsheets", type=GSheetsConnection)
 df = conn.read(spreadsheet=url)
 
