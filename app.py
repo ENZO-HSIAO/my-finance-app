@@ -7,7 +7,8 @@ import re
 st.set_page_config(page_title="My Finance", page_icon="💰", layout="centered")
 
 # --- 2. 密碼保護功能 ---
-CORRECT_PASSWORD = "你的自訂密碼"  # 請改為你的密碼
+# 將下方引號內的內容改為你的密碼
+CORRECT_PASSWORD = "你的自訂密碼" 
 
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
@@ -20,10 +21,10 @@ if not st.session_state["authenticated"]:
             st.session_state["authenticated"] = True
             st.rerun()
         else:
-            st.error("密碼錯誤")
+            st.error("密碼錯誤，請重新輸入。")
     st.stop()
 
-# --- 3. CSS 樣式 (獨立存放，避免程式碼衝突) ---
+# --- 3. CSS 樣式 (獨立定義，避免語法報錯) ---
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] { background-color: #F2F2F7; }
@@ -44,55 +45,63 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. 數字解析 ---
-def get_num(val):
+# --- 4. 數字解析工具 ---
+def parse_num(val):
     if pd.isna(val) or val == "": return 0.0
     try:
-        return float("".join(re.findall(r"[-+]?\d*\.\d+|\d+", str(val))))
+        # 強制抓取數字、小數點及正負號
+        res = "".join(re.findall(r"[-+]?\d*\.\d+|\d+", str(val)))
+        return float(res)
     except:
         return 0.0
 
-# --- 5. 讀取資料 ---
+# --- 5. 讀取與計算 ---
 url = "https://docs.google.com/spreadsheets/d/1f0XezXO1hq7vrLw_w0C7SC5UzM_MF-9KU6fGLJiyGwc/edit?usp=sharing"
 
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(spreadsheet=url, ttl=0) # ttl=0 確保不抓舊美金資料
+    df = conn.read(spreadsheet=url, ttl=0)
 
-    # 排除「合計」列
-    items_df = df[~df['項目'].str.contains('合計', na=False)].copy()
+    # 排除含有「合計」字眼的列，防止重複計算
+    display_df = df[~df['項目'].str.contains('合計', na=False)].copy()
     
     # 計算台幣總額
-    total_net = items_df['總價值公式'].apply(get_num).sum()
+    total_net = display_df['總價值公式'].apply(parse_num).sum()
 
     st.markdown('<p style="color: #8E8E93; font-size: 14px;">我的淨資產 (台幣)</p>', unsafe_allow_html=True)
     st.markdown(f'<p class="amount-header">NT$ {total_net:,.0f}</p>', unsafe_allow_html=True)
 
-    color_map = {
-        "流動資產": "#A28BF3", "投資-股票": "#FF8A65", 
-        "投資-加密貨幣": "#4DB6AC", "固定資產": "#81C784", "負債": "#FFB74D"
-    }
+    color_map = {"流動資產": "#A28BF3", "投資-股票": "#FF8A65", "投資-加密貨幣": "#4DB6AC", "固定資產": "#81C784", "負債": "#FFB74D"}
 
-    # 6. 渲染清單
-    for _, row in items_df.iterrows():
+    # 6. 渲染列表 (使用 format 避免 f-string 大括號衝突)
+    for _, row in display_df.iterrows():
         if pd.isna(row['項目']): continue
         
         tag_color = color_map.get(row['類別'], "#D1D1D6")
-        amt = get_num(row['總價值公式'])
-        qty = get_num(row['持有數量'])
-        qty_txt = f"{qty:.6f}" if 0 < qty < 1 else f"{qty:,.0f}"
+        amt = parse_num(row['總價值公式'])
+        q = parse_num(row['持有數量'])
+        qty_display = f"{q:.6f}" if 0 < q < 1 else f"{q:,.0f}"
 
-        # 使用 .format 避開 f-string 的大括號衝突問題
-        card_html = '''
+        html_template = '''
         <div class="asset-card">
             <div class="color-tag" style="background-color: {color};"></div>
             <div class="card-content">
                 <div>
                     <div class="title-text">{name}</div>
-                    <div class="sub-text">持有：{q}<br>{cat} · {note}</div>
+                    <div class="sub-text">持有：{qty}<br>{cat} · {note}</div>
                 </div>
                 <div class="price-text">NT$ {val:,.0f}</div>
             </div>
         </div>
-        '''.format(
-            color=tag_
+        '''
+        st.markdown(html_template.format(
+            color=tag_color,
+            name=row['項目'],
+            qty=qty_display,
+            cat=row['類別'],
+            note=row['備註'] if not pd.isna(row['備註']) else "",
+            val=amt
+        ), unsafe_allow_html=True)
+
+except Exception as e:
+    st.error(f"連線失敗：{e}")
