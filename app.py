@@ -71,18 +71,21 @@ try:
         
         tag_color = color_map.get(row['類別'], "#D1D1D6")
         
-        # 數量顯示處理
-        qty = row['持有數量']
-        try:
-            q_val = float(qty)
-            qty_display = f"{q_val:,.4f}" if q_val < 1 and q_val > 0 else f"{q_val:,.0f}"
-        except:
-            qty_display = str(qty) if not pd.isna(qty) else "-"
+# 處理持有數量顯示
+qty = row['持有數量']
+try:
+    q_val = float(qty)
+    # 針對小於 1 的加密貨幣顯示 6 位小數，避免看起來像 0
+    qty_display = f"{q_val:.6f}" if 0 < q_val < 1 else f"{q_val:,.0f}"
+except:
+    qty_display = "-"
 
-        # 金額顯示：直接使用你表單改好的台幣格式
-        price_display = str(row['總價值公式'])
-        if "NT$" not in price_display:
-            price_display = f"NT$ {price_display}"
+# 處理金額顯示
+try:
+    price_val = float(pd.to_numeric(str(row['總價值公式']).replace('NT$', '').replace(',', ''), errors='coerce'))
+    price_display = f"NT$ {price_val:,.2f}" # 保留兩位小數避免顯示為 0.0
+except:
+    price_display = f"NT$ {row['總價值公式']}"
 
         st.markdown(f'''
         <div class="asset-card">
