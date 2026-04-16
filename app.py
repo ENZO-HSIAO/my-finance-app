@@ -110,42 +110,100 @@ try:
                 '</summary><div class="sub-list">' + sub_items_html + '</div></details>'
             ), unsafe_allow_html=True)
 
-    with tab2:
-        st.markdown("### 🛠️ 快速調整庫存")
+with tab2:
+        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        st.markdown("### ⚙️ 資產異動")
         
-        with st.container(border=True):
-            target_item = st.selectbox("選擇資產項目", items_df['項目'].unique())
+        # --- 漂亮的操作卡片 ---
+        st.markdown("""
+        <style>
+            /* 讓輸入框變高級 */
+            div[data-baseweb="input"] {
+                border-radius: 12px !important;
+                border: 1px solid #E5E5EA !important;
+                background-color: white !important;
+                padding: 4px;
+            }
+            /* 調整按鈕樣式：Apple 風格 */
+            .stButton>button {
+                border-radius: 12px;
+                padding: 12px 20px;
+                font-weight: 600;
+                transition: all 0.2s;
+                border: none;
+            }
+            .plus-btn button { background-color: #1C1C1E !important; color: white !important; }
+            .minus-btn button { background-color: white !important; color: #1C1C1E !important; border: 1px solid #E5E5EA !important; }
             
-            # 找到當前項目的現有數量
-            current_qty = parse_val(items_df.loc[items_df['項目'] == target_item, '持有數量'].values[0])
-            st.write(f"當前庫存：`{current_qty}`")
+            /* 資產資訊卡 */
+            .info-card {
+                background: white;
+                padding: 20px;
+                border-radius: 18px;
+                border: 1px solid #F2F2F7;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+                margin-bottom: 24px;
+            }
+        </style>
+        """, unsafe_allow_html=True)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                mode = st.radio("調整方式", ["增加數量", "減少數量", "直接修正總數"])
-            with col2:
-                change_amt = st.number_input("異動數量", min_value=0.0, step=0.000001, format="%.6f")
+        # 1. 選擇資產 (簡約下拉選單)
+        target_item = st.selectbox("選擇要調整的項目", items_df['項目'].unique(), label_visibility="collapsed")
+        
+        # 2. 顯示目前狀態卡片
+        item_data = items_df[items_df['項目'] == target_item].iloc[0]
+        current_qty = parse_val(item_data['持有數量'])
+        
+        st.markdown(f"""
+        <div class="info-card">
+            <div style="color: #8E8E93; font-size: 14px; font-weight: 500;">目前持倉</div>
+            <div style="font-size: 28px; font-weight: 700; color: #1C1C1E; margin: 4px 0;">{current_qty:,.6f}</div>
+            <div style="font-size: 14px; color: #43CCC9; font-weight: 600;">{target_item}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # 3. 輸入異動數量 (大文字輸入框)
+        st.markdown("<p style='font-size: 14px; color: #8E8E93; margin-bottom: 8px;'>請輸入異動數量</p>", unsafe_allow_html=True)
+        change_amt = st.number_input("異動數量", min_value=0.0, step=0.000001, format="%.6f", label_visibility="collapsed")
+
+        # 4. 雙按鈕操作介面
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown('<div class="plus-btn">', unsafe_allow_html=True)
+            plus_clicked = st.button(f"➕ 增加 {change_amt if change_amt > 0 else ''}", use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
             
-            if st.button("🚀 執行數據更新", use_container_width=True):
-                with st.spinner("正在同步至 Google Sheets..."):
-                    # 計算新數量
-                    new_qty = current_qty
-                    if mode == "增加數量": new_qty += change_amt
-                    elif mode == "減少數量": new_qty -= change_amt
-                    else: new_qty = change_amt
+        with col2:
+            st.markdown('<div class="minus-btn">', unsafe_allow_html=True)
+            minus_clicked = st.button(f"➖ 減少 {change_amt if change_amt > 0 else ''}", use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # 5. 處理寫入邏輯
+        if plus_clicked or minus_clicked:
+            if change_amt <= 0:
+                st.error("請輸入大於 0 的數字")
+            else:
+                with st.spinner("正在同步數據..."):
+                    new_qty = current_qty + change_amt if plus_clicked else current_qty - change_amt
                     
-                    # 更新 raw_df (確保格式正確)
+                    # 執行寫入 Google Sheets
                     raw_df.loc[raw_df['項目'] == target_item, '持有數量'] = new_qty
-                    
-                    # 清除因讀取產生的空白列，避免寫入失敗
                     updated_df = raw_df.dropna(how="all")
-                    
-                    # 寫回 Google Sheets
                     conn.update(spreadsheet=url, data=updated_df)
-                    st.cache_data.clear() # 清除快取以顯示最新數據
-                    st.success(f"更新成功！{target_item} 新數量為 {new_qty}")
-                    st.balloons()
+                    
+                    st.cache_data.clear()
+                    st.toast(f"✅ {target_item} 已更新", icon='💰')
                     st.rerun()
+
+        # --- 額外：直接覆蓋功能 (隱藏在摺疊選單中，避免誤觸) ---
+        with st.expander("需要精確修正總數？"):
+            fixed_qty = st.number_input("輸入修正後的正確總量", value=current_qty)
+            if st.button("確認修正"):
+                raw_df.loc[raw_df['項目'] == target_item, '持有數量'] = fixed_qty
+                conn.update(spreadsheet=url, data=raw_df.dropna(how="all"))
+                st.cache_data.clear()
+                st.rerun()
 
 except Exception as e:
     st.error("系統連線中或發生錯誤：" + str(e))
