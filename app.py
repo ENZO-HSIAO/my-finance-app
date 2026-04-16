@@ -65,7 +65,7 @@ url = "https://docs.google.com/spreadsheets/d/1f0XezXO1hq7vrLw_w0C7SC5UzM_MF-9KU
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     # 這裡讀取整張表，包含隱藏的列，以便寫回
-    raw_df = conn.read(spreadsheet=url, ttl=0)
+    raw_df = conn.read(spreadsheet=url, ttl=10)
     
     # 建立用於顯示的過濾表
     items_df = raw_df[raw_df['類別'].notna() & ~raw_df['項目'].str.contains('合計', na=False)].copy()
