@@ -22,24 +22,55 @@ if not st.session_state["authenticated"]:
             st.error("密碼錯誤")
     st.stop()
 
-# --- 3. CSS 樣式 ---
+# --- 3. 全局 CSS 樣式 (Percento 極簡風) ---
 st.markdown("""
 <style>
-    [data-testid="stAppViewContainer"] { background-color: #F2F2F7; }
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; background-color: #E5E5EA; padding: 4px; border-radius: 12px; }
-    .stTabs [data-baseweb="tab"] { height: 35px; background-color: transparent; border-radius: 8px; color: #8E8E93; border: none; font-weight: 600; }
-    .stTabs [aria-selected="true"] { background-color: white !important; color: #1C1C1E !important; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    .percento-card { background: white; border-radius: 18px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); overflow: hidden; }
+    [data-testid="stAppViewContainer"] { background-color: #F8F9FB; }
+    
+    /* Tab 導覽列美化 */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px; background-color: #EEF0F3; padding: 5px; border-radius: 14px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 40px; background-color: transparent; border-radius: 10px;
+        color: #8E8E93; border: none; font-weight: 600; font-size: 15px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: white !important; color: #1C1C1E !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
+
+    /* 調整庫存頁面的卡片 */
+    .info-card {
+        background: white; padding: 24px; border-radius: 20px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.03); margin-bottom: 20px;
+        border: 1px solid #F2F2F7;
+    }
+
+    /* 讓 Number Input 圓潤一點 */
+    div[data-baseweb="input"] {
+        border-radius: 15px !important; border: 1px solid #E5E5EA !important;
+        padding: 6px;
+    }
+
+    /* 按鈕樣式：買入(黑) / 賣出(白) */
+    .stButton>button {
+        border-radius: 15px; padding: 15px 20px; font-weight: 700;
+        transition: transform 0.1s ease; height: 60px;
+    }
+    .plus-btn button { background-color: #1C1C1E !important; color: white !important; border: none; }
+    .minus-btn button { background-color: white !important; color: #1C1C1E !important; border: 1.5px solid #1C1C1E !important; }
+    .stButton>button:active { transform: scale(0.98); }
+
+    /* 資產卡片 (Tab1) */
+    .percento-card { background: white; border-radius: 20px; margin-bottom: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); overflow: hidden; border: 1px solid #F2F2F7; }
     .summary-box { display: flex; align-items: stretch; cursor: pointer; list-style: none; }
     .summary-box::-webkit-details-marker { display: none; }
-    .color-bar { width: 16px; }
-    .summary-content { padding: 24px 20px; flex-grow: 1; display: flex; justify-content: space-between; align-items: center; }
-    .main-title { font-size: 18px; font-weight: 700; color: #1C1C1E; }
-    .main-price { font-size: 22px; font-weight: 700; color: #1C1C1E; }
-    .decimal-text { font-size: 14px; color: #8E8E93; font-weight: 600; }
-    .sub-list { background: #FAFAFB; padding: 10px 20px 20px 20px; border-top: 1px solid #F2F2F7; }
-    .sub-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #E5E5EA; }
-    .sub-price { font-size: 16px; font-weight: 600; color: #1C1C1E; }
+    .color-bar { width: 10px; }
+    .summary-content { padding: 22px 20px; flex-grow: 1; display: flex; justify-content: space-between; align-items: center; }
+    .main-title { font-size: 17px; font-weight: 700; color: #1C1C1E; }
+    .main-price { font-size: 20px; font-weight: 700; color: #1C1C1E; }
+    .decimal-text { font-size: 13px; color: #8E8E93; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,24 +90,21 @@ def get_main_category(cat):
     if "負債" in cat_str: return "負債"
     return "其他"
 
-# --- 5. 數據連接與讀取 ---
+# --- 5. 數據讀取與 UI 邏輯 ---
 url = "https://docs.google.com/spreadsheets/d/1f0XezXO1hq7vrLw_w0C7SC5UzM_MF-9KU6fGLJiyGwc/edit?usp=sharing"
 
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    # 這裡讀取整張表，包含隱藏的列，以便寫回
     raw_df = conn.read(spreadsheet=url, ttl=10)
-    
-    # 建立用於顯示的過濾表
     items_df = raw_df[raw_df['類別'].notna() & ~raw_df['項目'].str.contains('合計', na=False)].copy()
     items_df['主類別'] = items_df['類別'].apply(get_main_category)
 
-    tab1, tab2 = st.tabs(["📈 資產總覽", "⚙️ 調整庫存"])
+    tab1, tab2 = st.tabs(["📈 資產總覽", "⚙️ 快速更新"])
 
     with tab1:
         total_net = items_df['總價值公式'].apply(parse_val).sum()
-        st.markdown('<p style="color: #8E8E93; margin-top:20px; font-weight:600;">我的資產 (TWD)</p>', unsafe_allow_html=True)
-        st.markdown('<h1 style="font-size:42px; margin-bottom:30px;">NT$ {:,.2f}</h1>'.format(total_net), unsafe_allow_html=True)
+        st.markdown(f'<p style="color:#8E8E93; margin-top:25px; font-weight:600;">我的資產 (TWD)</p>', unsafe_allow_html=True)
+        st.markdown(f'<h1 style="font-size:42px; margin-bottom:30px; letter-spacing:-1px;">NT$ {total_net:,.0f}</h1>', unsafe_allow_html=True)
 
         main_cat_order = ["流動資金", "投資", "固定資產", "負債"]
         main_colors = {"流動資金": "#D1BBEB", "投資": "#FF9E79", "固定資產": "#43CCC9", "負債": "#FBD588"}
@@ -90,120 +118,84 @@ try:
             for _, row in sub_df.iterrows():
                 amt = parse_val(row['總價值公式'])
                 qty = parse_val(row['持有數量'])
-                qty_txt = "{:,.6f}".format(qty) if 0 < qty < 1 else "{:,.0f}".format(qty)
+                qty_txt = f"{qty:,.6f}" if 0 < qty < 1 else f"{qty:,.0f}"
                 sub_items_html += (
-                    '<div class="sub-item"><div><div class="sub-title">' + str(row['項目']) + '</div>'
-                    '<div style="font-size:12px; color:#8E8E93;">持有：' + qty_txt + '</div></div>'
-                    '<div class="sub-price">NT$ ' + "{:,.0f}".format(amt) + '</div></div>'
+                    f'<div style="display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid #F2F2F7;">'
+                    f'<div><div style="font-weight:600;">{row["項目"]}</div><div style="font-size:12px; color:#8E8E93;">持有: {qty_txt}</div></div>'
+                    f'<div style="font-weight:600;">NT$ {amt:,.0f}</div></div>'
                 )
 
-            total_str = "{:,.2f}".format(abs(cat_total))
-            int_part, dec_part = total_str.split('.')
-            color = main_colors.get(m_cat, "#D1D1D6")
-            
-            st.markdown((
-                '<details class="percento-card"><summary class="summary-box">'
-                '<div class="color-bar" style="background-color: ' + color + ';"></div>'
-                '<div class="summary-content"><div><div class="main-title">' + m_cat + '</div>'
-                '<div style="font-size:12px; color:#8E8E93;">點擊查看明細</div></div>'
-                '<div class="main-price">' + int_part + '<span class="decimal-text">.' + dec_part + '</span></div></div>'
-                '</summary><div class="sub-list">' + sub_items_html + '</div></details>'
-            ), unsafe_allow_html=True)
+            t_str = f"{abs(cat_total):,.2f}"
+            int_part, dec_part = t_str.split('.')
+            st.markdown(f"""
+                <details class="percento-card"><summary class="summary-box">
+                <div class="color-bar" style="background-color: {main_colors[m_cat]};"></div>
+                <div class="summary-content">
+                <div><div class="main-title">{m_cat}</div><div style="font-size:12px; color:#8E8E93;">點擊查看細項</div></div>
+                <div class="main-price">{int_part}<span class="decimal-text">.{dec_part}</span></div>
+                </div></summary>
+                <div style="background:#FAFAFB; padding: 10px 20px 20px 20px; border-top:1px solid #F2F2F7;">{sub_items_html}</div>
+                </details>
+            """, unsafe_allow_html=True)
 
-with tab2:
+    with tab2:
         st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-        st.markdown("### ⚙️ 資產異動")
+        st.markdown("### ⚙️ 調整庫存股數")
         
-        # --- 漂亮的操作卡片 ---
-        st.markdown("""
-        <style>
-            /* 讓輸入框變高級 */
-            div[data-baseweb="input"] {
-                border-radius: 12px !important;
-                border: 1px solid #E5E5EA !important;
-                background-color: white !important;
-                padding: 4px;
-            }
-            /* 調整按鈕樣式：Apple 風格 */
-            .stButton>button {
-                border-radius: 12px;
-                padding: 12px 20px;
-                font-weight: 600;
-                transition: all 0.2s;
-                border: none;
-            }
-            .plus-btn button { background-color: #1C1C1E !important; color: white !important; }
-            .minus-btn button { background-color: white !important; color: #1C1C1E !important; border: 1px solid #E5E5EA !important; }
-            
-            /* 資產資訊卡 */
-            .info-card {
-                background: white;
-                padding: 20px;
-                border-radius: 18px;
-                border: 1px solid #F2F2F7;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-                margin-bottom: 24px;
-            }
-        </style>
-        """, unsafe_allow_html=True)
-
-        # 1. 選擇資產 (簡約下拉選單)
-        target_item = st.selectbox("選擇要調整的項目", items_df['項目'].unique(), label_visibility="collapsed")
+        # 選擇項目
+        target_item = st.selectbox("請選擇資產", items_df['項目'].unique(), label_visibility="collapsed")
         
-        # 2. 顯示目前狀態卡片
+        # 顯示目前庫存卡片
         item_data = items_df[items_df['項目'] == target_item].iloc[0]
         current_qty = parse_val(item_data['持有數量'])
         
         st.markdown(f"""
         <div class="info-card">
-            <div style="color: #8E8E93; font-size: 14px; font-weight: 500;">目前持倉</div>
-            <div style="font-size: 28px; font-weight: 700; color: #1C1C1E; margin: 4px 0;">{current_qty:,.6f}</div>
-            <div style="font-size: 14px; color: #43CCC9; font-weight: 600;">{target_item}</div>
+            <div style="color: #8E8E93; font-size: 13px; font-weight: 600; text-transform: uppercase;">Current Balance</div>
+            <div style="font-size: 34px; font-weight: 800; color: #1C1C1E; margin: 5px 0;">{current_qty:,.6f}</div>
+            <div style="display: inline-block; background: #E8F5F2; color: #2D9C8B; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700;">{target_item}</div>
         </div>
         """, unsafe_allow_html=True)
 
-        # 3. 輸入異動數量 (大文字輸入框)
-        st.markdown("<p style='font-size: 14px; color: #8E8E93; margin-bottom: 8px;'>請輸入異動數量</p>", unsafe_allow_html=True)
-        change_amt = st.number_input("異動數量", min_value=0.0, step=0.000001, format="%.6f", label_visibility="collapsed")
+        # 輸入數量
+        st.markdown("<p style='font-size: 14px; color: #8E8E93; margin-bottom: 5px; font-weight: 600;'>輸入異動數量</p>", unsafe_allow_html=True)
+        change_amt = st.number_input("數量", min_value=0.0, step=0.000001, format="%.6f", label_visibility="collapsed")
 
-        # 4. 雙按鈕操作介面
+        # 左右兩個大按鈕
         col1, col2 = st.columns(2)
-        
         with col1:
             st.markdown('<div class="plus-btn">', unsafe_allow_html=True)
-            plus_clicked = st.button(f"➕ 增加 {change_amt if change_amt > 0 else ''}", use_container_width=True)
+            if st.button("➕ 增加持倉", use_container_width=True):
+                if change_amt > 0:
+                    with st.spinner("更新中..."):
+                        new_qty = current_qty + change_amt
+                        raw_df.loc[raw_df['項目'] == target_item, '持有數量'] = new_qty
+                        conn.update(spreadsheet=url, data=raw_df.dropna(how="all"))
+                        st.cache_data.clear()
+                        st.toast(f"成功買入 {change_amt} {target_item}")
+                        st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
-            
+
         with col2:
             st.markdown('<div class="minus-btn">', unsafe_allow_html=True)
-            minus_clicked = st.button(f"➖ 減少 {change_amt if change_amt > 0 else ''}", use_container_width=True)
+            if st.button("➖ 減少持倉", use_container_width=True):
+                if change_amt > 0:
+                    with st.spinner("更新中..."):
+                        new_qty = current_qty - change_amt
+                        raw_df.loc[raw_df['項目'] == target_item, '持有數量'] = new_qty
+                        conn.update(spreadsheet=url, data=raw_df.dropna(how="all"))
+                        st.cache_data.clear()
+                        st.toast(f"成功賣出 {change_amt} {target_item}")
+                        st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # 5. 處理寫入邏輯
-        if plus_clicked or minus_clicked:
-            if change_amt <= 0:
-                st.error("請輸入大於 0 的數字")
-            else:
-                with st.spinner("正在同步數據..."):
-                    new_qty = current_qty + change_amt if plus_clicked else current_qty - change_amt
-                    
-                    # 執行寫入 Google Sheets
-                    raw_df.loc[raw_df['項目'] == target_item, '持有數量'] = new_qty
-                    updated_df = raw_df.dropna(how="all")
-                    conn.update(spreadsheet=url, data=updated_df)
-                    
-                    st.cache_data.clear()
-                    st.toast(f"✅ {target_item} 已更新", icon='💰')
-                    st.rerun()
-
-        # --- 額外：直接覆蓋功能 (隱藏在摺疊選單中，避免誤觸) ---
-        with st.expander("需要精確修正總數？"):
-            fixed_qty = st.number_input("輸入修正後的正確總量", value=current_qty)
+        with st.expander("精確修正總量 (取代現有數值)"):
+            fix_qty = st.number_input("修正為以下數值", value=current_qty, format="%.6f")
             if st.button("確認修正"):
-                raw_df.loc[raw_df['項目'] == target_item, '持有數量'] = fixed_qty
+                raw_df.loc[raw_df['項目'] == target_item, '持有數量'] = fix_qty
                 conn.update(spreadsheet=url, data=raw_df.dropna(how="all"))
                 st.cache_data.clear()
                 st.rerun()
 
 except Exception as e:
-    st.error("系統連線中或發生錯誤：" + str(e))
+    st.error(f"系統暫時無法連線 (Code: {e})。請確認 Google Cloud 權限或稍候再試。")
