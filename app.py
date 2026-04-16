@@ -68,7 +68,7 @@ try:
     items_df['主類別'] = items_df['類別'].apply(get_main_category)
 
     # 分成三個頁籤
-    tab1, tab2, tab3 = st.tabs(["📈 資產總覽", "⚙️ 快速更新", "✨ 新增項目"])
+    tab1, tab2, tab3 = st.tabs(["📈 資產總覽", "⚙️ 庫存更新", "✨ 新增資產"])
 
     # --- TAB 1: 資產總覽 ---
     with tab1:
