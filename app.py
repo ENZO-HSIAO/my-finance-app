@@ -91,7 +91,7 @@ try:
     items_df = raw_df[raw_df['類別'].notna() & ~raw_df['項目'].str.contains('合計', na=False)].copy()
     items_df['主類別'] = items_df['類別'].apply(get_main_category)
 
-    tab1, tab2 = st.tabs(["📈 資產總覽", "⚙️ 快速更新"])
+    tab1, tab2 = st.tabs(["📈 資產總覽", "⚙️ 資產更新"])
 
     with tab1:
         # 總淨資產計算
