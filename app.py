@@ -22,35 +22,30 @@ if not st.session_state["authenticated"]:
             st.error("密碼錯誤")
     st.stop()
 
-# --- 3. 初始狀態管理 ---
-if "show_add_form" not in st.session_state:
-    st.session_state["show_add_form"] = False
-
-# --- 4. 全局 CSS 樣式 ---
+# --- 3. 全局 CSS 樣式 ---
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] { background-color: #F8F9FB; }
     
-    /* Tab 導覽列 */
+    /* Tab 導覽列：調整為三個等分感 */
     .stTabs [data-baseweb="tab-list"] { gap: 8px; background-color: #EEF0F3; padding: 5px; border-radius: 14px; }
-    .stTabs [data-baseweb="tab"] { height: 40px; background-color: transparent; border-radius: 10px; color: #8E8E93; border: none; font-weight: 600; }
+    .stTabs [data-baseweb="tab"] { height: 40px; background-color: transparent; border-radius: 10px; color: #8E8E93; border: none; font-weight: 600; flex-grow: 1; }
     .stTabs [aria-selected="true"] { background-color: white !important; color: #1C1C1E !important; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
 
-    /* 資產卡片 */
+    /* 資產卡片樣式 */
     .percento-card { background: white; border-radius: 20px; margin-bottom: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); overflow: hidden; border: 1px solid #F2F2F7; }
     .summary-box { display: flex; align-items: stretch; cursor: pointer; list-style: none; }
     .color-bar { width: 10px; }
     .summary-content { padding: 22px 20px; flex-grow: 1; display: flex; justify-content: space-between; align-items: center; }
     
-    /* 更新卡片 */
-    .update-card { background: white; padding: 24px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.03); border: 1px solid #F2F2F7; margin-bottom: 20px; }
+    /* 更新與新增表單卡片 */
+    .form-card { background: white; padding: 24px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.03); border: 1px solid #F2F2F7; margin-bottom: 20px; }
     
-    /* 調整按鈕樣式 */
-    .stButton>button { border-radius: 12px !important; }
+    .stButton>button { border-radius: 12px !important; font-weight: 600 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 5. 工具函數 ---
+# --- 4. 工具函數 ---
 def parse_val(val):
     if pd.isna(val) or val == "": return 0.0
     try:
@@ -66,7 +61,7 @@ def get_main_category(cat):
     if "負債" in cat_str: return "負債"
     return "其他"
 
-# --- 6. 數據連接 ---
+# --- 5. 數據連接 ---
 url = "https://docs.google.com/spreadsheets/d/1f0XezXO1hq7vrLw_w0C7SC5UzM_MF-9KU6fGLJiyGwc/edit?usp=sharing"
 
 try:
@@ -75,16 +70,15 @@ try:
     items_df = raw_df[raw_df['類別'].notna() & ~raw_df['項目'].str.contains('合計', na=False)].copy()
     items_df['主類別'] = items_df['類別'].apply(get_main_category)
 
-    # --- 7. 主分頁介面 ---
-    tab1, tab2 = st.tabs(["📈 資產總覽", "⚙️ 快速更新"])
+    # --- 6. 三個獨立分頁 ---
+    tab1, tab2, tab3 = st.tabs(["📈 資產總覽", "⚙️ 快速更新", "✨ 新增項目"])
 
+    # --- TAB 1: 資產總覽 ---
     with tab1:
-        # 總資產顯示
         total_net = items_df['總價值公式'].apply(parse_val).sum()
         st.markdown(f'<p style="color:#8E8E93; margin-top:25px; font-weight:600;">我的資產 (TWD)</p>', unsafe_allow_html=True)
         st.markdown(f'<h1 style="font-size:42px; margin-bottom:30px; letter-spacing:-1px;">NT$ {total_net:,.0f}</h1>', unsafe_allow_html=True)
 
-        # 分類顯示
         main_cat_order = ["流動資金", "投資", "固定資產", "負債"]
         main_colors = {"流動資金": "#D1BBEB", "投資": "#FF9E79", "固定資產": "#43CCC9", "負債": "#FBD588"}
 
@@ -116,48 +110,19 @@ try:
                 </details>
             """, unsafe_allow_html=True)
 
+    # --- TAB 2: 快速更新 ---
     with tab2:
-        # 將新增按鈕放在標題右側
-        col_title, col_btn = st.columns([3, 1])
-        with col_title:
-            st.markdown("### ⚙️ 快速更新項目")
-        with col_btn:
-            if st.button("＋ 新增資產", use_container_width=True):
-                st.session_state["show_add_form"] = not st.session_state["show_add_form"]
-
-        # 新增項目的表單
-        if st.session_state["show_add_form"]:
-            with st.form("add_new_asset_tab2"):
-                st.info("✨ 請填寫新資產資訊")
-                n_cat = st.selectbox("歸類類別", ["流動資金", "投資-股票", "投資-加密貨幣", "固定資產"])
-                n_name = st.text_input("項目名稱 (例如: 0050, 悠遊卡)")
-                c1, c2 = st.columns(2)
-                i_qty = c1.number_input("初始數量", min_value=0.0, format="%.6f")
-                i_val = c2.number_input("初始總值 (TWD)", min_value=0.0)
-                
-                btn_save, btn_cancel = st.columns(2)
-                if btn_save.form_submit_button("確認新增", use_container_width=True):
-                    if n_name:
-                        new_row = pd.DataFrame([{"類別": n_cat, "項目": n_name, "持有數量": i_qty, "總價值公式": i_val}])
-                        updated_df = pd.concat([raw_df, new_row], ignore_index=True)
-                        conn.update(spreadsheet=url, data=updated_df.dropna(how="all"))
-                        st.cache_data.clear()
-                        st.session_state["show_add_form"] = False
-                        st.rerun()
-                if btn_cancel.form_submit_button("關閉", use_container_width=True):
-                    st.session_state["show_add_form"] = False
-                    st.rerun()
-            st.markdown("---")
-
-        # 原有的更新功能
-        target_item = st.selectbox("選擇資產", items_df['項目'].unique(), label_visibility="collapsed")
+        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        st.markdown("### ⚙️ 快速更新項目")
+        target_item = st.selectbox("選擇要更新的資產", items_df['項目'].unique())
+        
         item_data = items_df[items_df['項目'] == target_item].iloc[0]
         curr_q = parse_val(item_data['持有數量'])
         curr_v = parse_val(item_data['總價值公式'])
         u_price = curr_v / curr_q if curr_q > 0 else 1.0
 
         st.markdown(f"""
-        <div class="update-card">
+        <div class="form-card">
             <div style="color: #8E8E93; font-size: 13px; font-weight: 600;">目前持倉</div>
             <div style="font-size: 34px; font-weight: 800; color: #1C1C1E; margin: 5px 0;">{curr_q:,.6f}</div>
             <div style="display: inline-block; background: #E8F5F2; color: #2D9C8B; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 700;">{target_item}</div>
@@ -182,6 +147,34 @@ try:
             conn.update(spreadsheet=url, data=raw_df.dropna(how="all"))
             st.cache_data.clear()
             st.rerun()
+
+    # --- TAB 3: 新增項目 ---
+    with tab3:
+        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        st.markdown("### ✨ 建立新資產項目")
+        
+        with st.container():
+            with st.form("new_asset_form", clear_on_submit=True):
+                n_cat = st.selectbox("歸類類別", ["流動資金", "投資-股票", "投資-加密貨幣", "固定資產"])
+                n_name = st.text_input("項目名稱 (例如: 0050, 悠遊卡)")
+                
+                c1, c2 = st.columns(2)
+                i_qty = c1.number_input("初始數量", min_value=0.0, format="%.6f", value=0.0)
+                i_val = c2.number_input("初始總價值 (TWD)", min_value=0.0, value=0.0)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                submit_btn = st.form_submit_button("🚀 確認新增資產", use_container_width=True)
+                
+                if submit_btn:
+                    if n_name:
+                        new_row = pd.DataFrame([{"類別": n_cat, "項目": n_name, "持有數量": i_qty, "總價值公式": i_val}])
+                        updated_df = pd.concat([raw_df, new_row], ignore_index=True)
+                        conn.update(spreadsheet=url, data=updated_df.dropna(how="all"))
+                        st.cache_data.clear()
+                        st.success(f"成功新增：{n_name}")
+                        st.rerun()
+                    else:
+                        st.warning("請填寫項目名稱")
 
 except Exception as e:
     st.error(f"系統連線異常：{e}")
