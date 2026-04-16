@@ -133,7 +133,7 @@ try:
 
     with tab2:
         st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-        st.markdown("### ⚙️ 調整庫存")
+        st.markdown("### ⚙️ 調整資產")
         
         target_item = st.selectbox("請選擇資產項目", items_df['項目'].unique(), label_visibility="collapsed")
         
