@@ -105,7 +105,7 @@ try:
     # --- TAB 2: 快速更新 (保留顏色連動) ---
     with tab2:
         st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-        st.markdown("### ⚙️ 快速更新項目")
+        st.markdown("### ⚙️ 庫存調整")
         target_item = st.selectbox("選擇要更新的資產", items_df['項目'].unique())
         
         item_data = items_df[items_df['項目'] == target_item].iloc[0]
