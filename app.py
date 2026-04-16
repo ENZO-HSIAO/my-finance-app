@@ -144,7 +144,7 @@ try:
         st.markdown("### ✨ 建立新資產項目")
         with st.form("new_asset_form", clear_on_submit=True):
             n_cat = st.selectbox("歸類類別", ["流動資金", "投資-股票", "投資-加密貨幣", "固定資產", "負債"])
-            n_name = st.text_input("項目名稱 (例如: 0050, 悠遊卡)")
+            n_name = st.text_input("項目名稱 (例如: 0050)")
             c1, c2 = st.columns(2)
             i_qty = c1.number_input("初始數量", format="%.6f")
             i_val = c2.number_input("初始總價值 (TWD)")
