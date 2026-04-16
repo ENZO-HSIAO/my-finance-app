@@ -8,7 +8,6 @@ st.set_page_config(page_title="My Finance", page_icon="💰", layout="centered")
 
 # --- 2. 密碼保護功能 ---
 CORRECT_PASSWORD = "0612" 
-
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
@@ -23,66 +22,35 @@ if not st.session_state["authenticated"]:
             st.error("密碼錯誤")
     st.stop()
 
-# --- 3. CSS 樣式 (Percento 收折卡片風格，純字串不含變數) ---
+# --- 3. CSS 樣式 ---
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] { background-color: #F2F2F7; }
-    
-    /* 收折卡片主體 */
-    .percento-card {
-        background: white; border-radius: 18px; padding: 0;
-        margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.04);
-        overflow: hidden;
-    }
-    
-    /* 點擊區域 (隱藏預設三角形) */
-    .summary-box {
-        display: flex; align-items: stretch; cursor: pointer;
-        list-style: none; 
-    }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; background-color: #E5E5EA; padding: 4px; border-radius: 12px; }
+    .stTabs [data-baseweb="tab"] { height: 35px; background-color: transparent; border-radius: 8px; color: #8E8E93; border: none; font-weight: 600; }
+    .stTabs [aria-selected="true"] { background-color: white !important; color: #1C1C1E !important; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .percento-card { background: white; border-radius: 18px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); overflow: hidden; }
+    .summary-box { display: flex; align-items: stretch; cursor: pointer; list-style: none; }
     .summary-box::-webkit-details-marker { display: none; }
-    
-    /* 左側顏色條 */
     .color-bar { width: 16px; }
-    
-    /* 主類別內容區 */
-    .summary-content {
-        padding: 24px 20px; flex-grow: 1;
-        display: flex; justify-content: space-between; align-items: center;
-    }
+    .summary-content { padding: 24px 20px; flex-grow: 1; display: flex; justify-content: space-between; align-items: center; }
     .main-title { font-size: 18px; font-weight: 700; color: #1C1C1E; }
-    .main-sub { font-size: 13px; color: #8E8E93; margin-top: 4px; }
-    .main-price { font-size: 22px; font-weight: 700; color: #1C1C1E; text-align: right; }
+    .main-price { font-size: 22px; font-weight: 700; color: #1C1C1E; }
     .decimal-text { font-size: 14px; color: #8E8E93; font-weight: 600; }
-    
-    /* 展開後的子項目列表區 */
-    .sub-list {
-        background: #FAFAFB; padding: 10px 20px 20px 20px;
-        border-top: 1px solid #F2F2F7;
-    }
-    .sub-item {
-        display: flex; justify-content: space-between; align-items: center;
-        padding: 12px 0; border-bottom: 1px solid #E5E5EA;
-    }
-    .sub-item:last-child { border-bottom: none; padding-bottom: 0; }
-    .sub-title { font-size: 15px; font-weight: 600; color: #333; }
-    .sub-desc { font-size: 12px; color: #8E8E93; margin-top: 4px; }
+    .sub-list { background: #FAFAFB; padding: 10px 20px 20px 20px; border-top: 1px solid #F2F2F7; }
+    .sub-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #E5E5EA; }
     .sub-price { font-size: 16px; font-weight: 600; color: #1C1C1E; }
-    
-    .amount-header { font-size: 36px; font-weight: 700; margin-bottom: 30px; color: #1C1C1E; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. 數字解析工具 ---
+# --- 4. 工具函數 ---
 def parse_val(val):
     if pd.isna(val) or val == "": return 0.0
     try:
         res = "".join(re.findall(r"[-+]?\d*\.\d+|\d+", str(val)))
         return float(res)
-    except:
-        return 0.0
+    except: return 0.0
 
-# --- 5. 主類別映射邏輯 ---
 def get_main_category(cat):
     cat_str = str(cat)
     if "流動" in cat_str: return "流動資金"
@@ -91,93 +59,93 @@ def get_main_category(cat):
     if "負債" in cat_str: return "負債"
     return "其他"
 
-# --- 6. 數據讀取與核心邏輯 ---
+# --- 5. 數據連接與讀取 ---
 url = "https://docs.google.com/spreadsheets/d/1f0XezXO1hq7vrLw_w0C7SC5UzM_MF-9KU6fGLJiyGwc/edit?usp=sharing"
 
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    df = conn.read(spreadsheet=url, ttl=0)
-
-    # A. 核心過濾
-    items_df = df[df['類別'].notna() & ~df['項目'].str.contains('合計', na=False)].copy()
+    # 這裡讀取整張表，包含隱藏的列，以便寫回
+    raw_df = conn.read(spreadsheet=url, ttl=0)
     
-    # B. 新增主類別欄位
+    # 建立用於顯示的過濾表
+    items_df = raw_df[raw_df['類別'].notna() & ~raw_df['項目'].str.contains('合計', na=False)].copy()
     items_df['主類別'] = items_df['類別'].apply(get_main_category)
-    
-    # C. 計算總淨資產
-    total_net = items_df['總價值公式'].apply(parse_val).sum()
 
-    st.markdown('<p style="color: #8E8E93; font-size: 14px; font-weight: 600;">我的資產 (TWD)</p>', unsafe_allow_html=True)
-    st.markdown('<p class="amount-header">{:,.2f}</p>'.format(total_net), unsafe_allow_html=True)
+    tab1, tab2 = st.tabs(["📈 資產總覽", "⚙️ 調整庫存"])
 
-    # 定義主類別順序與 Percento 風格顏色
-    main_cat_order = ["流動資金", "投資", "固定資產", "負債"]
-    main_colors = {
-        "流動資金": "#D1BBEB",  # 淡紫
-        "投資": "#FF9E79",      # 橘粉
-        "固定資產": "#43CCC9",  # 藍綠
-        "負債": "#FBD588"       # 鵝黃
-    }
+    with tab1:
+        total_net = items_df['總價值公式'].apply(parse_val).sum()
+        st.markdown('<p style="color: #8E8E93; margin-top:20px; font-weight:600;">我的資產 (TWD)</p>', unsafe_allow_html=True)
+        st.markdown('<h1 style="font-size:42px; margin-bottom:30px;">NT$ {:,.2f}</h1>'.format(total_net), unsafe_allow_html=True)
 
-    # --- 7. 渲染收折卡片 (完全使用字串拼接) ---
-    for m_cat in main_cat_order:
-        sub_df = items_df[items_df['主類別'] == m_cat]
-        if sub_df.empty: continue
-        
-        # 該大類別的總額
-        cat_total = sub_df['總價值公式'].apply(parse_val).sum()
-        
-        # 組合次項目的 HTML 列表
-        sub_items_html = ""
-        for _, row in sub_df.iterrows():
-            if pd.isna(row['項目']): continue
+        main_cat_order = ["流動資金", "投資", "固定資產", "負債"]
+        main_colors = {"流動資金": "#D1BBEB", "投資": "#FF9E79", "固定資產": "#43CCC9", "負債": "#FBD588"}
+
+        for m_cat in main_cat_order:
+            sub_df = items_df[items_df['主類別'] == m_cat]
+            if sub_df.empty: continue
+            cat_total = sub_df['總價值公式'].apply(parse_val).sum()
             
-            amt = parse_val(row['總價值公式'])
-            qty = parse_val(row['持有數量'])
-            qty_txt = "{:,.6f}".format(qty) if 0 < qty < 1 else "{:,.0f}".format(qty)
-            sub_name = str(row['項目'])
-            sub_cat = str(row['類別']) # 顯示原本的次類別 (例如：投資-加密貨幣)
+            sub_items_html = ""
+            for _, row in sub_df.iterrows():
+                amt = parse_val(row['總價值公式'])
+                qty = parse_val(row['持有數量'])
+                qty_txt = "{:,.6f}".format(qty) if 0 < qty < 1 else "{:,.0f}".format(qty)
+                sub_items_html += (
+                    '<div class="sub-item"><div><div class="sub-title">' + str(row['項目']) + '</div>'
+                    '<div style="font-size:12px; color:#8E8E93;">持有：' + qty_txt + '</div></div>'
+                    '<div class="sub-price">NT$ ' + "{:,.0f}".format(amt) + '</div></div>'
+                )
+
+            total_str = "{:,.2f}".format(abs(cat_total))
+            int_part, dec_part = total_str.split('.')
+            color = main_colors.get(m_cat, "#D1D1D6")
             
-            sub_items_html += (
-                '<div class="sub-item">'
-                '<div>'
-                '<div class="sub-title">' + sub_name + '</div>'
-                '<div class="sub-desc">持有：' + qty_txt + '<br>' + sub_cat + '</div>'
-                '</div>'
-                '<div class="sub-price">' + "{:,.2f}".format(amt) + '</div>'
-                '</div>'
-            )
+            st.markdown((
+                '<details class="percento-card"><summary class="summary-box">'
+                '<div class="color-bar" style="background-color: ' + color + ';"></div>'
+                '<div class="summary-content"><div><div class="main-title">' + m_cat + '</div>'
+                '<div style="font-size:12px; color:#8E8E93;">點擊查看明細</div></div>'
+                '<div class="main-price">' + int_part + '<span class="decimal-text">.' + dec_part + '</span></div></div>'
+                '</summary><div class="sub-list">' + sub_items_html + '</div></details>'
+            ), unsafe_allow_html=True)
 
-        # 外層大卡片的 HTML 設定
-        color = main_colors.get(m_cat, "#D1D1D6")
+    with tab2:
+        st.markdown("### 🛠️ 快速調整庫存")
         
-        # 針對負債做特別處理（像 Percento 顯示負號）
-        is_debt = (m_cat == "負債")
-        sign_html = '<span style="color:#1C1C1E; margin-right:4px;">➖</span>' if is_debt else ""
-        
-        # 將整數與小數點分開，讓字體大小有層次感 (Percento 的細節)
-        total_str = "{:,.2f}".format(abs(cat_total))
-        int_part, dec_part = total_str.split('.')
+        with st.container(border=True):
+            target_item = st.selectbox("選擇資產項目", items_df['項目'].unique())
+            
+            # 找到當前項目的現有數量
+            current_qty = parse_val(items_df.loc[items_df['項目'] == target_item, '持有數量'].values[0])
+            st.write(f"當前庫存：`{current_qty}`")
 
-        card_html = (
-            '<details class="percento-card">'
-            '<summary class="summary-box">'
-            '<div class="color-bar" style="background-color: ' + color + ';"></div>'
-            '<div class="summary-content">'
-            '<div>'
-            '<div class="main-title">' + m_cat + '</div>'
-            '<div class="main-sub">••• 點擊展開明細</div>'
-            '</div>'
-            '<div class="main-price">' + sign_html + int_part + '<span class="decimal-text">.' + dec_part + '</span></div>'
-            '</div>'
-            '</summary>'
-            '<div class="sub-list">'
-            + sub_items_html +
-            '</div>'
-            '</details>'
-        )
-        st.markdown(card_html, unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                mode = st.radio("調整方式", ["增加數量", "減少數量", "直接修正總數"])
+            with col2:
+                change_amt = st.number_input("異動數量", min_value=0.0, step=0.000001, format="%.6f")
+            
+            if st.button("🚀 執行數據更新", use_container_width=True):
+                with st.spinner("正在同步至 Google Sheets..."):
+                    # 計算新數量
+                    new_qty = current_qty
+                    if mode == "增加數量": new_qty += change_amt
+                    elif mode == "減少數量": new_qty -= change_amt
+                    else: new_qty = change_amt
+                    
+                    # 更新 raw_df (確保格式正確)
+                    raw_df.loc[raw_df['項目'] == target_item, '持有數量'] = new_qty
+                    
+                    # 清除因讀取產生的空白列，避免寫入失敗
+                    updated_df = raw_df.dropna(how="all")
+                    
+                    # 寫回 Google Sheets
+                    conn.update(spreadsheet=url, data=updated_df)
+                    st.cache_data.clear() # 清除快取以顯示最新數據
+                    st.success(f"更新成功！{target_item} 新數量為 {new_qty}")
+                    st.balloons()
+                    st.rerun()
 
 except Exception as e:
-    # 開發時建議把 e 印出來，上線後再改成 "連線中..."
-    st.error("連線或讀取資料發生錯誤: " + str(e))
+    st.error("系統連線中或發生錯誤：" + str(e))
