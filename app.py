@@ -6,10 +6,8 @@ from supabase import create_client
 import os
 from datetime import datetime, date, timedelta
 
-# 1. 頁面基本設定
 st.set_page_config(page_title="My Finance", page_icon="💰", layout="centered")
 
-# --- 2. 密碼保護功能 ---
 CORRECT_PASSWORD = "0612"
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
@@ -25,7 +23,6 @@ if not st.session_state["authenticated"]:
             st.error("密碼錯誤")
     st.stop()
 
-# --- 3. 全局 CSS 樣式 ---
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] { background-color: #F8F9FB; }
@@ -39,10 +36,12 @@ st.markdown("""
     .summary-content { padding: 22px 20px; flex-grow: 1; display: flex; justify-content: space-between; align-items: center; }
     .stButton>button { border-radius: 12px !important; font-weight: 700 !important; }
     .expense-row { background: white; border-radius: 12px; padding: 14px 18px; margin-bottom: 8px; border: 1px solid #F2F2F7; display: flex; justify-content: space-between; align-items: center; }
+    .pie-container { background: white; border-radius: 20px; padding: 24px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #F2F2F7; }
+    .stat-card { background: white; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #F2F2F7; }
+    .fixed-row { background: white; border-radius: 12px; padding: 14px 18px; margin-bottom: 8px; border: 1px solid #F2F2F7; display: flex; justify-content: space-between; align-items: center; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. 工具函數 ---
 def parse_val(val):
     if pd.isna(val) or val == "": return 0.0
     try:
@@ -58,7 +57,6 @@ def get_main_category(cat):
     if "負債" in cat_str: return "負債"
     return "其他"
 
-# --- 5. Supabase 連線 ---
 @st.cache_resource
 def get_supabase():
     url = "https://zofdsownonnuuwsmhnjy.supabase.co"
@@ -70,17 +68,15 @@ EMOJI_MAP = {"餐飲": "🍽️", "交通": "🚗", "購物": "🛍️", "娛樂
 CAT_COLORS = {"餐飲": "#FF6B6B", "交通": "#4ECDC4", "購物": "#FFE66D", "娛樂": "#A8E6CF",
               "訂閱": "#C3B1E1", "醫療": "#FF9E79", "住宿": "#74B9FF", "教育": "#FD79A8", "其他": "#B2BEC3"}
 
-# --- 6. 數據讀取 ---
-url = "https://docs.google.com/spreadsheets/d/1f0XezXO1hq7vrLw_w0C7SC5UzM_MF-9KU6fGLJiyGwc/edit?usp=sharing"
+url_gs = "https://docs.google.com/spreadsheets/d/1f0XezXO1hq7vrLw_w0C7SC5UzM_MF-9KU6fGLJiyGwc/edit?usp=sharing"
 
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
-    raw_df = conn.read(spreadsheet=url, ttl=5)
+    raw_df = conn.read(spreadsheet=url_gs, ttl=5)
     items_df = raw_df[raw_df['類別'].notna() & ~raw_df['項目'].str.contains('合計', na=False)].copy()
     items_df['主類別'] = items_df['類別'].apply(get_main_category)
 
-    # 頁籤
-    tab1, tab2, tab3, tab4 = st.tabs(["📈 資產總覽", "💸 記帳", "⚙️ 庫存更新", "✨ 新增資產"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 資產總覽", "💸 記帳", "📌 固定項目", "⚙️ 庫存更新", "✨ 新增資產"])
 
     # --- TAB 1: 資產總覽 ---
     with tab1:
@@ -116,68 +112,74 @@ try:
         sb = get_supabase()
         st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
 
-        if sb is None:
-            st.warning("⚠️ 尚未設定 Supabase，請在 secrets 加入 SUPABASE_URL 和 SUPABASE_KEY")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            view_mode = st.radio("查看範圍", ["今日", "本月", "自訂"], horizontal=True)
+        today = date.today()
+        if view_mode == "今日":
+            start_date = end_date = today
+        elif view_mode == "本月":
+            start_date = today.replace(day=1)
+            end_date = today
         else:
-            # 日期篩選
-            col_a, col_b = st.columns(2)
-            with col_a:
-                view_mode = st.radio("查看範圍", ["今日", "本月", "自訂"], horizontal=True)
+            with col_b:
+                date_range = st.date_input("選擇日期", value=(today - timedelta(days=7), today))
+                start_date, end_date = date_range if len(date_range) == 2 else (today, today)
+
+        res = sb.table("expenses").select("*").gte("date", str(start_date)).lte("date", str(end_date)).order("date", desc=True).execute()
+        expenses = res.data
+        total = sum(e["amount"] for e in expenses)
+
+        # 頂部統計
+        st.markdown(f'<p style="color:#8E8E93; font-weight:600; margin-top:10px;">期間總支出</p><h2 style="font-size:40px; margin-bottom:20px; letter-spacing:-1px;">NT$ {total:,.0f}</h2>', unsafe_allow_html=True)
+
+        if expenses:
+            # 圓餅圖（用 HTML/CSS 長條圖模擬）
+            by_cat = {}
+            for e in expenses:
+                by_cat[e["category"]] = by_cat.get(e["category"], 0) + e["amount"]
             
-            today = date.today()
-            if view_mode == "今日":
-                start_date = end_date = today
-            elif view_mode == "本月":
-                start_date = today.replace(day=1)
-                end_date = today
-            else:
-                with col_b:
-                    date_range = st.date_input("選擇日期", value=(today - timedelta(days=7), today))
-                    start_date, end_date = date_range if len(date_range) == 2 else (today, today)
+            sorted_cats = sorted(by_cat.items(), key=lambda x: -x[1])
+            
+            # 視覺化分類長條
+            st.markdown('<div class="pie-container">', unsafe_allow_html=True)
+            st.markdown("**📊 支出分佈**")
+            
+            bar_html = '<div style="display:flex; height:20px; border-radius:10px; overflow:hidden; margin:12px 0;">'
+            for cat, amt in sorted_cats:
+                pct = amt / total * 100 if total > 0 else 0
+                color = CAT_COLORS.get(cat, "#B2BEC3")
+                bar_html += f'<div style="width:{pct}%; background:{color}; transition:all 0.3s;" title="{cat}: {pct:.0f}%"></div>'
+            bar_html += '</div>'
+            st.markdown(bar_html, unsafe_allow_html=True)
 
-            # 讀取資料
-            res = sb.table("expenses").select("*")\
-                .gte("date", str(start_date))\
-                .lte("date", str(end_date))\
-                .order("date", desc=True).execute()
-            expenses = res.data
-
-            # 統計
-            total = sum(e["amount"] for e in expenses)
-            st.markdown(f'<p style="color:#8E8E93; font-weight:600; margin-top:10px;">期間支出</p><h2 style="font-size:36px; margin-bottom:20px;">NT$ {total:,.0f}</h2>', unsafe_allow_html=True)
-
-            # 類別圓餅圖（用 st.bar_chart）
-            if expenses:
-                by_cat = {}
-                for e in expenses:
-                    by_cat[e["category"]] = by_cat.get(e["category"], 0) + e["amount"]
-                cat_df = pd.DataFrame(list(by_cat.items()), columns=["類別", "金額"]).sort_values("金額", ascending=False)
-                
-                # 類別卡片
-                for _, row in cat_df.iterrows():
-                    cat = row["類別"]
-                    amt = row["金額"]
-                    color = CAT_COLORS.get(cat, "#B2BEC3")
-                    emoji = EMOJI_MAP.get(cat, "📝")
-                    pct = amt / total * 100 if total > 0 else 0
-                    st.markdown(f"""
-                    <div class="percento-card">
-                        <div class="summary-box">
-                            <div class="color-bar" style="background:{color}"></div>
-                            <div class="summary-content">
-                                <div><div style="font-weight:700;">{emoji} {cat}</div>
-                                <div style="font-size:12px;color:#8E8E93;">{pct:.0f}% 的支出</div></div>
-                                <div style="font-size:20px;font-weight:700;">NT$ {amt:,.0f}</div>
-                            </div>
-                        </div>
+            # 分類明細
+            for cat, amt in sorted_cats:
+                color = CAT_COLORS.get(cat, "#B2BEC3")
+                emoji = EMOJI_MAP.get(cat, "📝")
+                pct = amt / total * 100 if total > 0 else 0
+                st.markdown(f"""
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #F2F2F7;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:12px; height:12px; border-radius:3px; background:{color};"></div>
+                        <span style="font-weight:600;">{emoji} {cat}</span>
                     </div>
-                    """, unsafe_allow_html=True)
+                    <div style="text-align:right;">
+                        <div style="font-weight:700;">NT$ {amt:,.0f}</div>
+                        <div style="font-size:12px; color:#8E8E93;">{pct:.0f}%</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-                st.markdown("---")
-                st.markdown("**📋 明細**")
-                for e in expenses:
-                    emoji = EMOJI_MAP.get(e["category"], "📝")
-                    color = CAT_COLORS.get(e["category"], "#B2BEC3")
+            # 明細列表
+            st.markdown("---")
+            st.markdown("**📋 明細**")
+            for e in expenses:
+                emoji = EMOJI_MAP.get(e["category"], "📝")
+                color = CAT_COLORS.get(e["category"], "#B2BEC3")
+                col_e, col_del = st.columns([6, 1])
+                with col_e:
                     st.markdown(f"""
                     <div class="expense-row">
                         <div>
@@ -187,33 +189,120 @@ try:
                         <div style="font-weight:700;color:{color}">NT$ {e['amount']:,.0f}</div>
                     </div>
                     """, unsafe_allow_html=True)
-            else:
-                st.info("這段期間沒有記錄")
-
-            # 手動新增
-            st.markdown("---")
-            st.markdown("### ✏️ 手動新增")
-            with st.form("manual_expense", clear_on_submit=True):
-                c1, c2 = st.columns(2)
-                m_desc = c1.text_input("描述", placeholder="例：晚餐咖喱飯")
-                m_amt = c2.number_input("金額 (NT$)", min_value=0.0, step=1.0)
-                c3, c4 = st.columns(2)
-                m_cat = c3.selectbox("類別", list(EMOJI_MAP.keys()))
-                m_date = c4.date_input("日期", value=today)
-                if st.form_submit_button("➕ 新增", use_container_width=True):
-                    if m_desc and m_amt > 0:
-                        sb.table("expenses").insert({
-                            "date": str(m_date),
-                            "time": datetime.now().strftime("%H:%M"),
-                            "description": m_desc,
-                            "amount": m_amt,
-                            "category": m_cat,
-                        }).execute()
-                        st.success("已記錄！")
+                with col_del:
+                    if st.button("🗑️", key=f"del_{e['id']}"):
+                        sb.table("expenses").delete().eq("id", e["id"]).execute()
                         st.rerun()
+        else:
+            st.info("這段期間沒有記錄")
 
-    # --- TAB 3: 快速更新 ---
+        # 手動新增
+        st.markdown("---")
+        st.markdown("### ✏️ 手動新增")
+        with st.form("manual_expense", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            m_desc = c1.text_input("描述", placeholder="例：晚餐咖喱飯")
+            m_amt = c2.number_input("金額 (NT$)", min_value=0.0, step=1.0)
+            c3, c4 = st.columns(2)
+            m_cat = c3.selectbox("類別", list(EMOJI_MAP.keys()))
+            m_date = c4.date_input("日期", value=today)
+            if st.form_submit_button("➕ 新增", use_container_width=True):
+                if m_desc and m_amt > 0:
+                    sb.table("expenses").insert({
+                        "date": str(m_date),
+                        "time": datetime.now().strftime("%H:%M"),
+                        "description": m_desc,
+                        "amount": m_amt,
+                        "category": m_cat,
+                    }).execute()
+                    st.success("已記錄！")
+                    st.rerun()
+
+    # --- TAB 3: 固定項目 ---
     with tab3:
+        sb = get_supabase()
+        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+
+        # 讀取固定項目
+        fixed_res = sb.table("fixed_items").select("*").order("type").execute()
+        fixed_items = fixed_res.data
+
+        income_items = [f for f in fixed_items if f["type"] == "收入"]
+        expense_items = [f for f in fixed_items if f["type"] == "支出"]
+        total_income = sum(f["amount"] for f in income_items)
+        total_expense = sum(f["amount"] for f in expense_items)
+        net = total_income - total_expense
+
+        # 統計卡片
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown(f'<div class="stat-card"><div style="color:#8E8E93;font-size:13px;font-weight:600;">固定收入</div><div style="font-size:24px;font-weight:800;color:#43CCC9;">+{total_income:,.0f}</div></div>', unsafe_allow_html=True)
+        with c2:
+            st.markdown(f'<div class="stat-card"><div style="color:#8E8E93;font-size:13px;font-weight:600;">固定支出</div><div style="font-size:24px;font-weight:800;color:#FF6B6B;">-{total_expense:,.0f}</div></div>', unsafe_allow_html=True)
+        with c3:
+            color = "#43CCC9" if net >= 0 else "#FF6B6B"
+            st.markdown(f'<div class="stat-card"><div style="color:#8E8E93;font-size:13px;font-weight:600;">每月淨額</div><div style="font-size:24px;font-weight:800;color:{color};">{net:+,.0f}</div></div>', unsafe_allow_html=True)
+
+        st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+
+        # 收入列表
+        st.markdown("### 💚 固定收入")
+        if income_items:
+            for f in income_items:
+                c_l, c_r = st.columns([6, 1])
+                with c_l:
+                    st.markdown(f"""
+                    <div class="fixed-row">
+                        <div style="font-weight:600;">{f['description']}</div>
+                        <div style="font-weight:700; color:#43CCC9;">+NT$ {f['amount']:,.0f} <span style="font-size:12px;color:#8E8E93;">/ 月</span></div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with c_r:
+                    if st.button("🗑️", key=f"fdel_{f['id']}"):
+                        sb.table("fixed_items").delete().eq("id", f["id"]).execute()
+                        st.rerun()
+        else:
+            st.caption("尚無固定收入")
+
+        # 支出列表
+        st.markdown("### 🔴 固定支出")
+        if expense_items:
+            for f in expense_items:
+                c_l, c_r = st.columns([6, 1])
+                with c_l:
+                    st.markdown(f"""
+                    <div class="fixed-row">
+                        <div style="font-weight:600;">{f['description']}</div>
+                        <div style="font-weight:700; color:#FF6B6B;">-NT$ {f['amount']:,.0f} <span style="font-size:12px;color:#8E8E93;">/ 月</span></div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with c_r:
+                    if st.button("🗑️", key=f"fdel_{f['id']}"):
+                        sb.table("fixed_items").delete().eq("id", f["id"]).execute()
+                        st.rerun()
+        else:
+            st.caption("尚無固定支出")
+
+        # 新增固定項目
+        st.markdown("---")
+        st.markdown("### ➕ 新增固定項目")
+        with st.form("add_fixed", clear_on_submit=True):
+            c1, c2, c3 = st.columns(3)
+            f_type = c1.selectbox("類型", ["支出", "收入"])
+            f_desc = c2.text_input("描述", placeholder="例：房租")
+            f_amt = c3.number_input("每月金額", min_value=0.0, step=100.0)
+            if st.form_submit_button("➕ 新增", use_container_width=True):
+                if f_desc and f_amt > 0:
+                    sb.table("fixed_items").insert({
+                        "type": f_type,
+                        "description": f_desc,
+                        "amount": f_amt,
+                    }).execute()
+                    st.success("已新增！")
+                    st.rerun()
+
+    # --- TAB 4: 庫存更新 ---
+    with tab4:
         st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
         st.markdown("### ⚙️ 庫存調整")
         target_item = st.selectbox("選擇要更新的資產", items_df['項目'].unique())
@@ -235,17 +324,17 @@ try:
         b1, b2 = st.columns(2)
         if b1.button("➕ 增加持倉", use_container_width=True):
             raw_df.loc[raw_df['項目'] == target_item, ['持有數量', '總價值公式']] = [curr_q + change, (curr_q + change) * u_price]
-            conn.update(spreadsheet=url, data=raw_df.dropna(how="all"))
+            conn.update(spreadsheet=url_gs, data=raw_df.dropna(how="all"))
             st.cache_data.clear()
             st.rerun()
         if b2.button("➖ 減少持倉", use_container_width=True):
             raw_df.loc[raw_df['項目'] == target_item, ['持有數量', '總價值公式']] = [curr_q - change, (curr_q - change) * u_price]
-            conn.update(spreadsheet=url, data=raw_df.dropna(how="all"))
+            conn.update(spreadsheet=url_gs, data=raw_df.dropna(how="all"))
             st.cache_data.clear()
             st.rerun()
 
-    # --- TAB 4: 新增資產 ---
-    with tab4:
+    # --- TAB 5: 新增資產 ---
+    with tab5:
         st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
         st.markdown("### ✨ 建立新資產項目")
         with st.form("new_asset_form", clear_on_submit=True):
@@ -257,7 +346,7 @@ try:
             if st.form_submit_button("🚀 確認新增資產", use_container_width=True):
                 if n_name:
                     new_row = pd.DataFrame([{"類別": n_cat, "項目": n_name, "持有數量": i_qty, "總價值公式": i_val}])
-                    conn.update(spreadsheet=url, data=pd.concat([raw_df, new_row], ignore_index=True).dropna(how="all"))
+                    conn.update(spreadsheet=url_gs, data=pd.concat([raw_df, new_row], ignore_index=True).dropna(how="all"))
                     st.cache_data.clear()
                     st.rerun()
 
