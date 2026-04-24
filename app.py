@@ -61,11 +61,9 @@ def get_main_category(cat):
 # --- 5. Supabase 連線 ---
 @st.cache_resource
 def get_supabase():
-    url = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL", ""))
-    key = st.secrets.get("SUPABASE_KEY", os.environ.get("SUPABASE_KEY", ""))
-    if url and key:
-        return create_client(url, key)
-    return None
+    url = "https://zofdsownonnuuwsmhnjy.supabase.co"
+    key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvZmRzb3dub25udXV3c21obmp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NDc5NzcsImV4cCI6MjA5MjUyMzk3N30.aXVehZNR4zaMYtCkE5EeU21HCMqO8JLHH8e3DpsoOmo"
+    return create_client(url, key)
 
 EMOJI_MAP = {"餐飲": "🍽️", "交通": "🚗", "購物": "🛍️", "娛樂": "🎬",
              "訂閱": "📱", "醫療": "💊", "住宿": "🏠", "教育": "📚", "其他": "📝"}
